@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>Royal Match - マッチ3パズル</title>
+<title>Royal Match Clone - Optimized</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;display:flex;flex-direction:column;align-items:center;font-family:'Segoe UI',sans-serif;color:#fff;overflow:hidden;touch-action:none}
@@ -72,16 +72,21 @@ function resize(){
   pCanvas.width=window.innerWidth;pCanvas.height=window.innerHeight;
 }
 
-// --- Board ---
+// --- Board Construction ---
 function makeBoard(){
   board=[];
-  for(let r=0;r<ROWS;r++){board[r]=[];for(let c=0;c<COLS;c++){
-    board[r][c]={type:rndType(r,c),x:c*cellSz,y:r*cellSz,ty:r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:null,frozen:false};
-  }}
-  if(level>=2)for(let i=0;i<Math.min(level,8);i++){let r=Math.floor(Math.random()*(ROWS-2))+2,c=Math.floor(Math.random()*COLS);board[r][c].type=TYPE_CRATE;}
-  if(level>=3)for(let i=0;i<Math.min(level-1,8);i++){let r=Math.floor(Math.random()*(ROWS-1))+1,c=Math.floor(Math.random()*COLS);if(board[r][c].type<100)board[r][c].frozen=true;}
-  if(level>=4)for(let i=0;i<Math.min(level-2,6);i++){let r=Math.floor(Math.random()*(ROWS-2))+2,c=Math.floor(Math.random()*COLS);board[r][c].type=TYPE_STONE;board[r][c].frozen=false;}
+  for(let r=0;r<ROWS;r++){
+    board[r]=[];
+    for(let c=0;c<COLS;c++){
+      board[r][c]={type:rndType(r,c),x:c*cellSz,y:r*cellSz,ty:r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:null,frozen:false};
+    }
+  }
+  // Obstacle Generation
+  if(level>=2)for(let i=0;i<Math.min(level+2,12);i++){let r=Math.floor(Math.random()*(ROWS-2))+2,c=Math.floor(Math.random()*COLS);board[r][c].type=TYPE_CRATE;}
+  if(level>=3)for(let i=0;i<Math.min(level,10);i++){let r=Math.floor(Math.random()*(ROWS-1))+1,c=Math.floor(Math.random()*COLS);if(board[r][c].type<100)board[r][c].frozen=true;}
+  if(level>=4)for(let i=0;i<Math.min(level-1,8);i++){let r=Math.floor(Math.random()*(ROWS-2))+2,c=Math.floor(Math.random()*COLS);board[r][c].type=TYPE_STONE;board[r][c].frozen=false;}
 }
+
 function rndType(r,c){
   let t;
   do{t=Math.floor(Math.random()*TYPES)}
@@ -89,21 +94,17 @@ function rndType(r,c){
   return t;
 }
 
-// --- Draw ---
+// --- Draw Functions ---
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  // grid bg
   for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
     ctx.fillStyle=(r+c)%2===0?'rgba(255,255,255,.08)':'rgba(255,255,255,.04)';
     ctx.fillRect(c*cellSz,r*cellSz,cellSz,cellSz);
-    // cell border
     ctx.strokeStyle='rgba(255,255,255,.05)';
     ctx.strokeRect(c*cellSz,r*cellSz,cellSz,cellSz);
   }
   if(!board||board.length===0)return;
-  // gems
   for(var r=0;r<ROWS;r++){
-    if(!board[r])continue;
     for(var c=0;c<COLS;c++){
       var g=board[r][c];if(!g)continue;
       var cx=g.x+g.ox+cellSz/2, cy=g.y+g.oy+cellSz/2;
@@ -122,12 +123,11 @@ function draw(){
         else drawGem(ctx,g.type,sz);
         if(g.frozen)drawIce(ctx,sz);
       }
-      ctx.shadowBlur=0;
-      ctx.restore();
-      ctx.globalAlpha=1;
+      ctx.shadowBlur=0;ctx.restore();ctx.globalAlpha=1;
     }
   }
 }
+
 function drawSpecial(c,type,sz){
   c.shadowColor='#ffd700';c.shadowBlur=12;
   c.fillStyle='rgba(255,215,0,.15)';c.beginPath();c.arc(0,0,sz+2,0,Math.PI*2);c.fill();
@@ -147,7 +147,6 @@ function drawSpecial(c,type,sz){
     for(var i=0;i<6;i++){var a=Math.PI/3*i;c.fillRect(Math.cos(a)*sz*.15-sz*.08,Math.sin(a)*sz*.15-sz*.08,sz*.16,sz*.16);}
     c.fillStyle='#ff4500';c.beginPath();c.arc(0,0,sz*.3,0,Math.PI*2);c.fill();
   }else if(type==='drone'){
-    c.fillStyle='#1a1a2e';
     for(var i=0;i<4;i++){c.save();c.rotate(Math.PI/2*i+performance.now()*.003);c.fillRect(-sz*.08,-sz*.6,sz*.16,sz*.5);c.restore();}
     c.fillStyle='#4fc3f7';c.beginPath();c.arc(0,0,sz*.2,0,Math.PI*2);c.fill();
   }else if(type==='rainbow'){
@@ -156,38 +155,23 @@ function drawSpecial(c,type,sz){
     c.fillStyle='#fff';c.beginPath();c.arc(0,0,sz*.35,0,Math.PI*2);c.fill();
     c.fillStyle='#1a1a2e';c.font='bold '+Math.floor(sz*.4)+'px sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('★',0,1);
   }
-  c.shadowBlur=0;
 }
 
 function drawGem(c,type,sz){
-  c.fillStyle=COLORS[type];
-  // Outer glow/shadow
-  c.shadowColor='rgba(0,0,0,0.5)';
-  c.shadowBlur=8;
-  c.shadowOffsetY=4;
-
   var grd=c.createRadialGradient(-sz*.3,-sz*.3,sz*.1,0,0,sz);
   grd.addColorStop(0,'rgba(255,255,255,0.7)');
   grd.addColorStop(0.2,COLORS[type]);
   grd.addColorStop(1,shadeColor(COLORS[type], -30));
   c.fillStyle=grd;
-  
   c.beginPath();
-  var h;
   if(SHAPES[type]==='circle'){c.arc(0,0,sz,0,Math.PI*2);}
   else if(SHAPES[type]==='diamond'){c.moveTo(0,-sz);c.lineTo(sz,0);c.lineTo(0,sz);c.lineTo(-sz,0);}
-  else if(SHAPES[type]==='square'){h=sz*.85;c.moveTo(-h,-h);c.lineTo(h,-h);c.lineTo(h,h);c.lineTo(-h,h);}
+  else if(SHAPES[type]==='square'){var h=sz*.85;c.moveTo(-h,-h);c.lineTo(h,-h);c.lineTo(h,h);c.lineTo(-h,h);}
   else if(SHAPES[type]==='triangle'){c.moveTo(0,-sz);c.lineTo(sz,sz*.7);c.lineTo(-sz,sz*.7);}
   else if(SHAPES[type]==='star'){drawStarPath(c,sz);}
   else if(SHAPES[type]==='heart'){drawHeart(c,sz);}
   c.closePath();c.fill();
-
-  // Edge highlights
-  c.shadowBlur=0;
-  c.shadowOffsetY=0;
-  c.strokeStyle='rgba(255,255,255,0.4)';
-  c.lineWidth=2.5;
-  c.stroke();
+  c.strokeStyle='rgba(255,255,255,0.4)';c.lineWidth=2.5;c.stroke();
 }
 
 function drawCrate(c,sz){
@@ -205,27 +189,18 @@ function drawIce(c,sz){
   c.strokeStyle='rgba(255,255,255,.8)';c.lineWidth=2;c.strokeRect(-sz,-sz,sz*2,sz*2);
   c.beginPath();c.moveTo(0,-sz*.8);c.lineTo(0,sz*.8);c.stroke();
   c.beginPath();c.moveTo(-sz*.8,0);c.lineTo(sz*.8,0);c.stroke();
-  c.beginPath();c.moveTo(-sz*.6,-sz*.6);c.lineTo(sz*.6,sz*.6);c.stroke();
-  c.beginPath();c.moveTo(sz*.6,-sz*.6);c.lineTo(-sz*.6,sz*.6);c.stroke();
 }
 
 function shadeColor(color, percent) {
-    var R = parseInt(color.substring(1,3),16);
-    var G = parseInt(color.substring(3,5),16);
-    var B = parseInt(color.substring(5,7),16);
-    R = parseInt(R * (100 + percent) / 100);
-    G = parseInt(G * (100 + percent) / 100);
-    B = parseInt(B * (100 + percent) / 100);
-    R = (R<255)?R:255; G = (G<255)?G:255; B = (B<255)?B:255;
-    var RR = ((R.toString(16).length==1)?"0"+R.toString(16):R.toString(16));
-    var GG = ((G.toString(16).length==1)?"0"+G.toString(16):G.toString(16));
-    var BB = ((B.toString(16).length==1)?"0"+B.toString(16):B.toString(16));
-    return "#"+RR+GG+BB;
+  var R = parseInt(color.substring(1,3),16), G = parseInt(color.substring(3,5),16), B = parseInt(color.substring(5,7),16);
+  R = parseInt(R * (100 + percent) / 100); G = parseInt(G * (100 + percent) / 100); B = parseInt(B * (100 + percent) / 100);
+  R = (R<255)?R:255; G = (G<255)?G:255; B = (B<255)?B:255;
+  return "#"+((1<<24)+(R<<16)+(G<<8)+B).toString(16).slice(1);
 }
 function drawStarPath(c,sz){let s=5,inn=sz*.45;for(let i=0;i<s*2;i++){let r=i%2===0?sz:inn;let a=Math.PI/s*i-Math.PI/2;i===0?c.moveTo(Math.cos(a)*r,Math.sin(a)*r):c.lineTo(Math.cos(a)*r,Math.sin(a)*r);}}
 function drawHeart(c,sz){c.moveTo(0,sz*.7);c.bezierCurveTo(-sz*1.2,-sz*.3,-sz*.4,-sz*1.2,0,-sz*.4);c.bezierCurveTo(sz*.4,-sz*1.2,sz*1.2,-sz*.3,0,sz*.7);}
 
-// --- Input ---
+// --- Input Handling ---
 let dragStart=null,dragging=false;
 function isSpecial(r,c){return board[r]&&board[r][c]&&board[r][c].special;}
 function onDown(e){
@@ -245,12 +220,9 @@ function onDown(e){
 function onMove(e){
   if(!dragStart||animating)return;
   let dx=e.clientX-dragStart.x,dy=e.clientY-dragStart.y;
-  let dist=Math.sqrt(dx*dx+dy*dy);
-  if(dist>cellSz*.3&&!dragging){
+  if(Math.sqrt(dx*dx+dy*dy)>cellSz*.3&&!dragging){
     dragging=true;
-    let dir;
-    if(Math.abs(dx)>Math.abs(dy)){dir=dx>0?[0,1]:[0,-1];}
-    else{dir=dy>0?[1,0]:[-1,0];}
+    let dir=Math.abs(dx)>Math.abs(dy)?(dx>0?[0,1]:[0,-1]):(dy>0?[1,0]:[-1,0]);
     let nr=dragStart.r+dir[0],nc=dragStart.c+dir[1];
     if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS){sel=null;trySwap(dragStart.r,dragStart.c,nr,nc);}
     dragStart=null;
@@ -258,38 +230,25 @@ function onMove(e){
 }
 function onUp(){dragStart=null;dragging=false;}
 
-// --- Specials ---
+// --- Special & Logic ---
 async function tapSpecial(r,c){
   animating=true;moves--;updUI();combo=0;
-  var sp=board[r][c].special;
-  var toRemove=[];
-  if(sp==='drone'){
-    var target=findDroneTarget();
-    toRemove=target?[{r:r,c:c},target]:[{r:r,c:c}];
-  }else if(sp==='rainbow'){
-    var pick=Math.floor(Math.random()*TYPES);
-    toRemove=[{r:r,c:c}];
+  var sp=board[r][c].special, toRemove=[];
+  if(sp==='drone'){var target=findDroneTarget();toRemove=target?[{r,c},target]:[{r,c}];}
+  else if(sp==='rainbow'){
+    var pick=Math.floor(Math.random()*TYPES);toRemove=[{r,c}];
     for(var rr=0;rr<ROWS;rr++)for(var cc=0;cc<COLS;cc++)if(board[rr][cc]?.type===pick)toRemove.push({r:rr,c:cc});
-  }else{
-    toRemove=getSpecialTargets(r,c,sp);
-    toRemove.push({r,c});
-  }
-  dedup(toRemove);
-  await processSpecialRemove(toRemove);
+  }else{toRemove=getSpecialTargets(r,c,sp);toRemove.push({r,c});}
+  dedup(toRemove);await processSpecialRemove(toRemove);
   animating=false;checkWin();
 }
 
 function findDroneTarget(){
-  var needed=objectives.filter(o=>o.cur<o.need);
-  if(!needed.length)return null;
-  var o=needed[Math.floor(Math.random()*needed.length)];
-  var candidates=[];
+  var needed=objectives.filter(o=>o.cur<o.need);if(!needed.length)return null;
+  var o=needed[Math.floor(Math.random()*needed.length)], candidates=[];
   for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
     let g=board[r][c];if(!g)continue;
-    if(o.type==='crate'&&g.type===TYPE_CRATE)candidates.push({r,c});
-    else if(o.type==='stone'&&g.type===TYPE_STONE)candidates.push({r,c});
-    else if(o.type==='ice'&&g.frozen)candidates.push({r,c});
-    else if(g.type===o.type)candidates.push({r,c});
+    if((o.type==='crate'&&g.type===TYPE_CRATE)||(o.type==='stone'&&g.type===TYPE_STONE)||(o.type==='ice'&&g.frozen)||(g.type===o.type))candidates.push({r,c});
   }
   return candidates.length?candidates[Math.floor(Math.random()*candidates.length)]:null;
 }
@@ -299,7 +258,6 @@ function getSpecialTargets(r,c,sp){
   if(sp==='rocket_h')for(var i=0;i<COLS;i++)t.push({r,c:i});
   else if(sp==='rocket_v')for(var i=0;i<ROWS;i++)t.push({r:i,c});
   else if(sp==='bomb')for(var dr=-2;dr<=2;dr++)for(var dc=-2;dc<=2;dc++){var nr=r+dr,nc=c+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)t.push({r:nr,c:nc});}
-  else if(sp==='drone'){var dt=findDroneTarget();if(dt)t.push(dt);}
   return t;
 }
 
@@ -310,10 +268,7 @@ async function processSpecialRemove(targets){
   targets.forEach(m=>{var g=board[m.r]&&board[m.r][m.c];if(g&&g.special)extra=extra.concat(getSpecialTargets(m.r,m.c,g.special));});
   if(extra.length)targets=targets.concat(extra);
   dedup(targets);
-  
-  let unfrozen=new Set();
-  let toRemove=[];
-  
+  let unfrozen=new Set(), toRemove=[];
   targets.forEach(m=>{
     var g=board[m.r]&&board[m.r][m.c];if(!g)return;
     if(g.type===TYPE_STONE){toRemove.push(m);objectives.forEach(o=>{if(o.type==='stone'&&o.cur<o.need)o.cur++;});}
@@ -321,94 +276,105 @@ async function processSpecialRemove(targets){
     else if(g.frozen){unfrozen.add(m.r+','+m.c);objectives.forEach(o=>{if(o.type==='ice'&&o.cur<o.need)o.cur++;});}
     else{toRemove.push(m);if(g.type>=0&&g.type<100)objectives.forEach(o=>{if(o.type===g.type&&o.cur<o.need)o.cur++;});}
   });
-  score+=toRemove.length*15;
-  updUI();
-  
-  unfrozen.forEach(pos=>{let p=pos.split(',');let r=+p[0],c=+p[1];board[r][c].frozen=false;spawnParticles(c*cellSz+cellSz/2,r*cellSz+cellSz/2,'#add8e6');});
-  
+  score+=toRemove.length*15;updUI();
+  unfrozen.forEach(pos=>{let p=pos.split(','),r=+p[0],c=+p[1];board[r][c].frozen=false;spawnParticles(c*cellSz+cellSz/2,r*cellSz+cellSz/2,'#add8e6');});
   await animRemove(toRemove);
   toRemove.forEach(m=>{
     let g=board[m.r][m.c];
-    if(g?.type===TYPE_CRATE)spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,'#8B4513');
-    else if(g?.type===TYPE_STONE)spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,'#7f8c8d');
-    else spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,'#ffd700');
+    spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,g?.type===TYPE_CRATE?'#8B4513':g?.type===TYPE_STONE?'#7f8c8d':'#ffd700');
     board[m.r][m.c]=null;
   });
   await drop();await fillEmpty();
   var matches=findMatches();if(matches.length)await processMatches(matches);
 }
 
-// --- Match ---
-async function trySwap(r1,c1,r2,c2){
-  animating=true;
-  var g1=board[r1][c1],g2=board[r2][c2];
-  if(!g1||!g2||g1.type>=100||g2.type>=100||g1.frozen||g2.frozen){animating=false;return;}
-  var s1=g1&&g1.special,s2=g2&&g2.special;
-  if(s1==='rainbow'||s2==='rainbow'){
-    await animSwap(r1,c1,r2,c2);
-    [board[r1][c1],board[r2][c2]]=[board[r2][c2],board[r1][c1]];fixPos();
-    moves--;combo=0;
-    var rainR=s1==='rainbow'?r2:r1,rainC=s1==='rainbow'?c2:c1;
-    var other=board[s1==='rainbow'?r1:r2][s1==='rainbow'?c1:c2];
-    var targets=[{r:rainR,c:rainC}];
-    if(other&&other.special){
-      var sp=other.special;board[rainR][rainC]=null;board[s1==='rainbow'?r1:r2][s1==='rainbow'?c1:c2]=null;
-      var empties=[];for(var rr=0;rr<ROWS;rr++)for(var cc=0;cc<COLS;cc++)if(board[rr][cc]&&!board[rr][cc].special)empties.push({r:rr,c:cc});
-      for(var i=0;i<Math.min(5,empties.length);i++){
-        var pos=empties.splice(Math.floor(Math.random()*empties.length),1)[0];
-        board[pos.r][pos.c]={type:-1,x:pos.c*cellSz,y:pos.r*cellSz,ty:pos.r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:sp};
-      }
-      await wait(300);
-      var allSp=[];for(var rr=0;rr<ROWS;rr++)for(var cc=0;cc<COLS;cc++)if(board[rr][cc]?.special)allSp.push({r:rr,c:cc});
-      allSp.forEach(p=>{targets=targets.concat(getSpecialTargets(p.r,p.c,board[p.r][p.c].special));targets.push(p);});
-    }else{
-      var type=other?other.type:-1;
-      if(type>=0)for(var rr=0;rr<ROWS;rr++)for(var cc=0;cc<COLS;cc++)if(board[rr][cc]?.type===type)targets.push({r:rr,c:cc});
-    }
-    dedup(targets);await processSpecialRemove(targets);
-    animating=false;checkWin();return;
-  }
-  if(s1&&s2){
-    await animSwap(r1,c1,r2,c2);
-    [board[r1][c1],board[r2][c2]]=[board[r2][c2],board[r1][c1]];fixPos();
-    moves--;combo=0;
-    var t=combineSpecials(r1,c1,s2,r2,c2,s1);await processSpecialRemove(t);
-    animating=false;checkWin();return;
-  }
-  if(s1||s2){
-    await animSwap(r1,c1,r2,c2);
-    [board[r1][c1],board[r2][c2]]=[board[r2][c2],board[r1][c1]];fixPos();
-    moves--;combo=0;
-    var sr=s1?r2:r1,sc=s1?c2:c1,sp=s1||s2;
-    var t=getSpecialTargets(sr,sc,sp);t.push({r:sr,c:sc});
-    dedup(t);await processSpecialRemove(t);
-    animating=false;checkWin();return;
-  }
-  await animSwap(r1,c1,r2,c2);
-  [board[r1][c1],board[r2][c2]]=[board[r2][c2],board[r1][c1]];fixPos();
-  let matches=findMatches();
-  if(!matches.length){
-    await animSwap(r1,c1,r2,c2);[board[r1][c1],board[r2][c2]]=[board[r2][c2],board[r1][c1]];
-    fixPos();animating=false;return;
-  }
-  moves--;combo=0;await processMatches(matches);
-  animating=false;checkWin();
-}
+// --- Matches & Specials (Prioritized Logic) ---
+function findSpecials(matches) {
+  var specials = [];
+  var set = new Set(matches.map(m => m.r + ',' + m.c));
+  var byRow = {}, byCol = {};
+  matches.forEach(m => {
+    if (!byRow[m.r]) byRow[m.r] = []; byRow[m.r].push(m.c);
+    if (!byCol[m.c]) byCol[m.c] = []; byCol[m.c].push(m.r);
+  });
 
-function combineSpecials(r1,c1,s1,r2,c2,s2){
-  var t=[];var isR=s=>s==='rocket_h'||s==='rocket_v';
-  if(isR(s1)&&isR(s2)){for(var i=0;i<COLS;i++)t.push({r:r1,c:i});for(var i=0;i<ROWS;i++)t.push({r:i,c:c1});}
-  else if((isR(s1)&&s2==='bomb')||(s1==='bomb'&&isR(s2))){
-    var rr=s1==='bomb'?r1:r2,cc=s1==='bomb'?c1:c2;
-    for(var dr=-1;dr<=1;dr++)for(var i=0;i<COLS;i++)if(rr+dr>=0&&rr+dr<ROWS)t.push({r:rr+dr,c:i});
-    for(var dc=-1;dc<=1;dc++)for(var i=0;i<ROWS;i++)if(cc+dc>=0&&cc+dc<COLS)t.push({r:i,c:cc+dc});
-  }else if(s1==='bomb'&&s2==='bomb'){for(var dr=-3;dr<=3;dr++)for(var dc=-3;dc<=3;dc++){var nr=r1+dr,nc=c1+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)t.push({r:nr,c:nc});}}
-  t.push({r:r1,c:c1},{r:r2,c:c2});dedup(t);return t;
+  // 1. Rainbow (5 in a row)
+  for (var r in byRow) {
+    byRow[r].sort((a,b)=>a-b); let run=1;
+    for (let i=1; i<=byRow[r].length; i++) {
+      if (i<byRow[r].length && byRow[r][i]===byRow[r][i-1]+1) run++;
+      else {
+        if (run>=5) {
+          specials.push({ r:+r, c:byRow[r][i-3], type:-1, special:'rainbow' });
+          for(let j=1; j<=run; j++) set.delete(r+','+byRow[r][i-j]);
+        }
+        run=1;
+      }
+    }
+  }
+  for (var c in byCol) {
+    byCol[c].sort((a,b)=>a-b); let run=1;
+    for (let i=1; i<=byCol[c].length; i++) {
+      if (i<byCol[c].length && byCol[c][i]===byCol[c][i-1]+1) run++;
+      else {
+        if (run>=5) {
+          if(!specials.find(s=>s.special==='rainbow'&&s.c===+c)){
+            specials.push({ r:byCol[c][i-3], c:+c, type:-1, special:'rainbow' });
+            for(let j=1; j<=run; j++) set.delete(byCol[c][i-j]+','+c);
+          }
+        }
+        run=1;
+      }
+    }
+  }
+
+  // 2. Bomb (T/L shape)
+  matches.forEach(m => {
+    if (!set.has(m.r+','+m.c)) return;
+    var h=0, v=0, t=board[m.r][m.c]?.type;
+    for(var cc=m.c-1; cc>=0 && board[m.r][cc]?.type===t; cc--) h++;
+    for(var cc=m.c+1; cc<COLS && board[m.r][cc]?.type===t; cc++) h++;
+    for(var rr=m.r-1; rr>=0 && board[rr][m.c]?.type===t; rr--) v++;
+    for(var rr=m.r+1; rr<ROWS && board[rr][m.c]?.type===t; rr++) v++;
+    if (h>=2 && v>=2) {
+      specials.push({ r:m.r, c:m.c, type:-1, special:'bomb' });
+      set.delete(m.r+','+m.c);
+    }
+  });
+
+  // 3. Rocket (4 in a row)
+  for (var r in byRow) {
+    byRow[r].forEach((c, i) => {
+      if (set.has(r+','+c) && byRow[r].includes(c+1) && byRow[r].includes(c+2) && byRow[r].includes(c+3)) {
+        specials.push({ r:+r, c:c+1, type:-1, special:'rocket_h' });
+        for(let j=0; j<4; j++) set.delete(r+','+(c+j));
+      }
+    });
+  }
+  for (var c in byCol) {
+    byCol[c].forEach((r, i) => {
+      if (set.has(r+','+c) && byCol[c].includes(r+1) && byCol[c].includes(r+2) && byCol[c].includes(r+3)) {
+        specials.push({ r:r+1, c:+c, type:-1, special:'rocket_v' });
+        for(let j=0; j<4; j++) set.delete((r+j)+','+c);
+      }
+    });
+  }
+
+  // 4. Drone (2x2 Square)
+  for (var r=0; r<ROWS-1; r++) {
+    for (var c=0; c<COLS-1; c++) {
+      var k1=r+','+c, k2=r+','+(c+1), k3=(r+1)+','+c, k4=(r+1)+','+(c+1);
+      if (set.has(k1) && set.has(k2) && set.has(k3) && set.has(k4)) {
+        specials.push({ r:r, c:c, type:-1, special:'drone' });
+        set.delete(k1); set.delete(k2); set.delete(k3); set.delete(k4);
+      }
+    }
+  }
+  return specials;
 }
 
 function findMatches(){
   var matched=new Set();
-  // 1. Line matches
   for(var r=0;r<ROWS;r++){
     var c=0;while(c<COLS){
       var t=board[r][c]?.type;if(t==null||t<0){c++;continue;}
@@ -425,12 +391,10 @@ function findMatches(){
       r+=len;
     }
   }
-  // 2. Square matches (Drone)
   for(var r=0;r<ROWS-1;r++)for(var c=0;c<COLS-1;c++){
     var t=board[r][c]?.type;if(t==null||t<0)continue;
-    if(board[r][c+1]?.type===t && board[r+1][c]?.type===t && board[r+1][c+1]?.type===t){
-      matched.add(r+','+c);matched.add(r+','+(c+1));matched.add((r+1)+','+c);matched.add((r+1)+','+(c+1));
-    }
+    if(board[r][c+1]?.type===t && board[r+1][c]?.type===t && board[r+1][c+1]?.type===t)
+    {matched.add(r+','+c);matched.add(r+','+(c+1));matched.add((r+1)+','+c);matched.add((r+1)+','+(c+1));}
   }
   return [...matched].map(s=>{var p=s.split(',');return{r:+p[0],c:+p[1]};});
 }
@@ -438,94 +402,109 @@ function findMatches(){
 async function processMatches(matches){
   while(matches.length>0){
     combo++;score+=matches.length*10*combo;
-    
-    let dmgCrates=new Set();
+    let dmgCrates=new Set(), unfrozen=new Set(), toRemove=[];
     matches.forEach(m=>{
       [[-1,0],[1,0],[0,-1],[0,1]].forEach(d=>{
         let nr=m.r+d[0],nc=m.c+d[1];
         if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&board[nr][nc]?.type===TYPE_CRATE)dmgCrates.add(nr+','+nc);
       });
-    });
-
-    let unfrozen=new Set();
-    let toRemove=[];
-    matches.forEach(m=>{
       let g=board[m.r][m.c];
       if(g.frozen){unfrozen.add(m.r+','+m.c);objectives.forEach(o=>{if(o.type==='ice'&&o.cur<o.need)o.cur++;});}
       else{toRemove.push(m);if(g.type>=0&&g.type<100)objectives.forEach(o=>{if(o.type===g.type&&o.cur<o.need)o.cur++;});}
     });
-
-    unfrozen.forEach(pos=>{let p=pos.split(',');let r=+p[0],c=+p[1];board[r][c].frozen=false;spawnParticles(c*cellSz+cellSz/2,r*cellSz+cellSz/2,'#add8e6');});
-    dmgCrates.forEach(pos=>{let p=pos.split(',');let r=+p[0],c=+p[1];toRemove.push({r,c});objectives.forEach(o=>{if(o.type==='crate'&&o.cur<o.need)o.cur++;});});
-
+    unfrozen.forEach(pos=>{let p=pos.split(','),r=+p[0],c=+p[1];board[r][c].frozen=false;});
+    dmgCrates.forEach(pos=>{let p=pos.split(','),r=+p[0],c=+p[1];toRemove.push({r,c});objectives.forEach(o=>{if(o.type==='crate'&&o.cur<o.need)o.cur++;});});
     var specials=findSpecials(matches);
     await animRemove(toRemove);
-    toRemove.forEach(m=>{
-      let g=board[m.r][m.c];
-      if(g?.type===TYPE_CRATE)spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,'#8B4513');
-      else spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,'#ffd700');
-      board[m.r][m.c]=null;
-    });
+    toRemove.forEach(m=>{board[m.r][m.c]=null;});
     specials.forEach(s=>board[s.r][s.c]={type:s.type,x:s.c*cellSz,y:s.r*cellSz,ty:s.r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:s.special,frozen:false});
-    await drop();await fillEmpty();
-    updUI();matches=findMatches();
+    await drop();await fillEmpty();updUI();matches=findMatches();
   }
   if(combo>=3)showMsg(combo>=5?'✨ AMAZING! ✨':combo>=4?'🔥 GREAT! 🔥':'⭐ NICE! ⭐');
 }
 
-function findSpecials(matches){
-  var specials=[];var set=new Set(matches.map(m=>m.r+','+m.c));
-  // 1. Square (Drone)
-  for(var r=0;r<ROWS-1;r++)for(var c=0;c<COLS-1;c++){
-    var k1=r+','+c,k2=r+','+(c+1),k3=(r+1)+','+c,k4=(r+1)+','+(c+1);
-    if(set.has(k1)&&set.has(k2)&&set.has(k3)&&set.has(k4)){
-      specials.push({r:r,c:c,type:-1,special:'drone'});
-      set.delete(k1);set.delete(k2);set.delete(k3);set.delete(k4);
-    }
+// --- UI & State ---
+function showLevelModal() {
+  makeBoard();
+  let aCr=0, aSt=0, aIc=0;
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    let g=board[r][c];if(!g)continue;
+    if(g.type===TYPE_CRATE)aCr++; if(g.type===TYPE_STONE)aSt++; if(g.frozen)aIc++;
   }
-  // 2. Lines
-  var byRow={},byCol={};
-  matches.forEach(m=>{if(set.has(m.r+','+m.c)){if(!byRow[m.r])byRow[m.r]=[];byRow[m.r].push(m.c);if(!byCol[m.c])byCol[m.c]=[];byCol[m.c].push(m.r);}});
-  for(var r in byRow){
-    byRow[r].sort((a,b)=>a-b);var run=1;
-    for(var i=1;i<=byRow[r].length;i++){
-      if(i<byRow[r].length&&byRow[r][i]===byRow[r][i-1]+1)run++;
-      else{
-        if(run>=5)specials.push({r:+r,c:byRow[r][i-3],type:-1,special:'rainbow'});
-        else if(run===4)specials.push({r:+r,c:byRow[r][i-2],type:-1,special:'rocket_h'});
-        run=1;
-      }
-    }
+  document.getElementById('lvl-modal').classList.remove('hidden');
+  document.getElementById('ml').textContent=level;
+  objectives=[];
+  if(aCr>0)objectives.push({type:'crate',need:aCr,cur:0});
+  if(aIc>0)objectives.push({type:'ice',need:aIc,cur:0});
+  if(aSt>0)objectives.push({type:'stone',need:aSt,cur:0});
+  let neededNormal=Math.max(1, 4-objectives.length);
+  let usedTypes=new Set();
+  for(let i=0;i<neededNormal;i++){
+    let t; do{t=Math.floor(Math.random()*TYPES)}while(usedTypes.has(t));
+    usedTypes.add(t);objectives.push({type:t,need:10+level*2,cur:0});
   }
-  for(var c in byCol){
-    byCol[c].sort((a,b)=>a-b);var run=1;
-    for(var i=1;i<=byCol[c].length;i++){
-      if(i<byCol[c].length&&byCol[c][i]===byCol[c][i-1]+1)run++;
-      else{
-        if(run>=5){if(!specials.find(s=>s.special==='rainbow'&&s.c===+c))specials.push({r:byCol[c][i-3],c:+c,type:-1,special:'rainbow'});}
-        else if(run===4)specials.push({r:byCol[c][i-2],c:+c,type:-1,special:'rocket_v'});
-        run=1;
-      }
-    }
-  }
-  // 3. T/L (Bomb)
-  matches.forEach(m=>{
-    if(!set.has(m.r+','+m.c))return;
-    var h=0,v=0,t=board[m.r][m.c]?.type;
-    for(var c=m.c-1;c>=0&&board[m.r][c]?.type===t;c--)h++;for(var c=m.c+1;c<COLS&&board[m.r][c]?.type===t;c++)h++;
-    for(var r=m.r-1;r>=0&&board[r][m.c]?.type===t;r--)v++;for(var r=m.r+1;r<ROWS&&board[r][m.c]?.type===t;r++)v++;
-    if(h>=2&&v>=2)if(!specials.find(s=>s.r===m.r&&s.c===m.c))specials.push({r:m.r,c:m.c,type:-1,special:'bomb'});
-  });
-  return specials;
+  maxMoves=18+Math.floor(level*1.5);
+  let txt=objectives.map(o=>`${typeof o.type==='string'?OBJ_EMOJI[o.type]:EMOJI[o.type]} ×${o.need}`).join('　');
+  document.getElementById('mobj').innerHTML=`目標: ${txt}<br>手数: ${maxMoves}`;
 }
 
-// --- Animation ---
-function fixPos(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(g){g.x=c*cellSz;g.y=r*cellSz;g.ty=r*cellSz;g.ox=0;g.oy=0;}}}
-async function animSwap(r1,c1,r2,c2){
-  let g1=board[r1][c1],g2=board[r2][c2],dx=(c2-c1)*cellSz,dy=(r2-r1)*cellSz;
-  return anim(ANIM_MS,t=>{let e=easeOut(t);g1.ox=dx*e;g1.oy=dy*e;g2.ox=-dx*e;g2.oy=-dy*e;});
+async function startLevel(){document.getElementById('lvl-modal').classList.add('hidden');moves=maxMoves;score=0;combo=0;fixPos();updUI();if(!hasValidMoves())await shuffleBoard();}
+async function checkWin(){
+  if(objectives.every(o=>o.cur>=o.need)){setTimeout(()=>{showMsg('🎉 CLEAR! 🎉');level++;setTimeout(()=>showLevelModal(),1200);},300);return;}
+  if(moves<=0){setTimeout(()=>{showMsg('💔 GAME OVER 💔');setTimeout(()=>showLevelModal(),1500);},300);return;}
+  if(!hasValidMoves()){animating=true;await shuffleBoard();animating=false;}
 }
-async function animRemove(matches){return anim(ANIM_MS,t=>{matches.forEach(m=>{let g=board[m.r]?.[m.c];if(g){g.scale=1-easeIn(t);g.alpha=1-t;}});});}
+
+// --- Utils & Core ---
+function swapData(r1,c1,r2,c2){var t=board[r1][c1];board[r1][c1]=board[r2][c2];board[r2][c2]=t;}
+async function trySwap(r1,c1,r2,c2){
+  animating=true;var g1=board[r1][c1],g2=board[r2][c2];
+  if(!g1||!g2||g1.type>=100||g2.type>=100||g1.frozen||g2.frozen){animating=false;return;}
+  await animSwap(r1,c1,r2,c2);swapData(r1,c1,r2,c2);fixPos();
+  let m=findMatches();
+  if(!m.length && !g1.special && !g2.special){await animSwap(r1,c1,r2,c2);swapData(r1,c1,r2,c2);fixPos();animating=false;return;}
+  moves--;combo=0;
+  if(g1.special || g2.special) {
+    var targets=[];
+    if(g1.special && g2.special) targets=combineSpecials(r1,c1,g1.special,r2,c2,g2.special);
+    else {var sr=g1.special?r1:r2, sc=g1.special?c1:c2, sp=g1.special||g2.special; targets=getSpecialTargets(sr,sc,sp);targets.push({r:sr,c:sc});}
+    dedup(targets);await processSpecialRemove(targets);
+  } else await processMatches(m);
+  animating=false;checkWin();
+}
+function combineSpecials(r1,c1,s1,r2,c2,s2){
+  var t=[], isR=s=>s==='rocket_h'||s==='rocket_v';
+  if(isR(s1)&&isR(s2)){for(let i=0;i<COLS;i++)t.push({r:r1,c:i});for(let i=0;i<ROWS;i++)t.push({r:i,c:c1});}
+  else if((isR(s1)&&s2==='bomb')||(s1==='bomb'&&isR(s2))){
+    let rr=s1==='bomb'?r1:r2,cc=s1==='bomb'?c1:c2;
+    for(let dr=-1;dr<=1;dr++)for(let i=0;i<COLS;i++)if(rr+dr>=0&&rr+dr<ROWS)t.push({r:rr+dr,c:i});
+    for(let dc=-1;dc<=1;dc++)for(let i=0;i<ROWS;i++)if(cc+dc>=0&&cc+dc<COLS)t.push({r:i,c:cc+dc});
+  }else if(s1==='bomb'&&s2==='bomb'){for(let dr=-3;dr<=3;dr++)for(let dc=-3;dc<=3;dc++){let nr=r1+dr,nc=c1+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)t.push({r:nr,c:nc});}}
+  t.push({r:r1,c:c1},{r:r2,c:c2});return t;
+}
+
+function hasValidMoves(){
+  for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
+    var g=board[r][c];if(!g||g.frozen)continue;if(g.special)return true;
+    if(c+1<COLS){var rg=board[r][c+1];if(rg&&!rg.frozen&&rg.type<100){swapData(r,c,r,c+1);var m=findMatches();swapData(r,c,r,c+1);if(m.length)return true;}}
+    if(r+1<ROWS){var dg=board[r+1][c];if(dg&&!dg.frozen&&dg.type<100){swapData(r,c,r+1,c);var m=findMatches();swapData(r,c,r+1,c);if(m.length)return true;}}
+  }
+  return false;
+}
+
+async function shuffleBoard(){
+  showMsg('🔄 SHUFFLE 🔄');await anim(400,t=>{});
+  let fg=[], fp=[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(g&&g.type<100&&!g.special&&!g.frozen){fg.push(g.type);fp.push({r,c});}}
+  for(let i=fg.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[fg[i],fg[j]]=[fg[j],fg[i]];}
+  fp.forEach((p,idx)=>{board[p.r][p.c].type=fg[idx];});
+  fixPos();
+}
+
+function fixPos(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(g){g.x=c*cellSz;g.y=r*cellSz;g.ty=r*cellSz;g.ox=0;g.oy=0;}}}
+async function animSwap(r1,c1,r2,c2){let g1=board[r1][c1],g2=board[r2][c2],dx=(c2-c1)*cellSz,dy=(r2-r1)*cellSz;return anim(ANIM_MS,t=>{let e=easeOut(t);g1.ox=dx*e;g1.oy=dy*e;g2.ox=-dx*e;g2.oy=-dy*e;});}
+async function animRemove(matches){return anim(ANIM_MS,t=>{matches.forEach(m=>{let g=board[m.r]?.[m.c];if(g){g.scale=1-t;g.alpha=1-t;}});});}
+async function animDrop(){let gs=[];for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]?.y!==board[r][c]?.ty)gs.push(board[r][c]);if(!gs.length)return;let st=gs.map(g=>g.y);return anim(ANIM_MS*1.5,t=>{let e=easeBounce(t);gs.forEach((g,i)=>g.y=st[i]+(g.ty-st[i])*e);});}
 async function drop(){
   let moved=false;for(let c=0;c<COLS;c++){let empty=0;for(let r=ROWS-1;r>=0;r--){if(!board[r][c])empty++;else if(board[r][c].type>=100)empty=0;else if(empty>0){board[r+empty][c]=board[r][c];board[r][c]=null;board[r+empty][c].ty=(r+empty)*cellSz;moved=true;}}}
   if(moved)await animDrop();
@@ -534,74 +513,17 @@ async function fillEmpty(){
   for(var c=0;c<COLS;c++){var emp=[];for(var r=0;r<ROWS;r++)if(!board[r][c])emp.push(r);for(var i=0;i<emp.length;i++){board[emp[i]][c]={type:rndType(emp[i],c),x:c*cellSz,y:-(emp.length-i)*cellSz,ty:emp[i]*cellSz,ox:0,oy:0,scale:1,alpha:1,special:null,frozen:false};}}
   await animDrop();
 }
-async function animDrop(){
-  let gs=[];for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]?.y!==board[r][c]?.ty)gs.push(board[r][c]);if(!gs.length)return;
-  let st=gs.map(g=>g.y);return anim(ANIM_MS*1.5,t=>{let e=easeBounce(t);gs.forEach((g,i)=>g.y=st[i]+(g.ty-st[i])*e);});
-}
 
-// --- Utils ---
-const wait=ms=>new Promise(r=>setTimeout(r,ms));
 function anim(dur,fn){return new Promise(res=>{let s=performance.now();requestAnimationFrame(function f(n){let t=Math.min((n-s)/dur,1);fn(t);if(t<1)requestAnimationFrame(f);else res();});});}
 function easeOut(t){return 1-Math.pow(1-t,3);}
-function easeIn(t){return t*t*t;}
 function easeBounce(t){if(t<.7)return(t/.7)**2;let b=(t-.7)/.3;return 1+Math.sin(b*Math.PI)*.08;}
-
 function spawnParticles(x,y,color){let r=canvas.getBoundingClientRect();for(let i=0;i<8;i++){let a=Math.random()*Math.PI*2,s=2+Math.random()*3;particles.push({x:r.left+x,y:r.top+y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,color,sz:3+Math.random()*4});}}
-function updateParticles(){pCtx.clearRect(0,0,pCanvas.width,pCanvas.height);particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.life-=.02;if(p.life<=0)return false;pCtx.globalAlpha=p.life;pCtx.fillStyle=p.color;pCtx.beginPath();pCtx.arc(p.x,p.y,p.sz*p.life,0,Math.PI*2);pCtx.fill();return true;});}
-
+function updateParticles(){pCtx.clearRect(0,0,pCanvas.width,pCanvas.height);particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.life-=.02;pCtx.globalAlpha=Math.max(0,p.life);pCtx.fillStyle=p.color;pCtx.beginPath();pCtx.arc(p.x,p.y,p.sz*p.life,0,Math.PI*2);pCtx.fill();return p.life>0;});}
 function updUI(){document.getElementById('score').textContent=score;document.getElementById('moves').textContent=moves;document.getElementById('lvl').textContent=level;updObjectives();}
 function updObjectives(){document.getElementById('objectives').innerHTML=objectives.map(o=>{let isStr=typeof o.type==='string';let icon=isStr?OBJ_EMOJI[o.type]:EMOJI[o.type];let dot=isStr?'transparent':COLORS[o.type];return `<div class="obj${o.cur>=o.need?' done':''}"><span class="dot" style="background:${dot}; display:${isStr?'none':'inline-block'}"></span>${icon} ${o.cur}/${o.need}</div>`;}).join('');}
 function showMsg(txt){let el=document.getElementById('msg');el.textContent=txt;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1200);}
-
-function showLevelModal(){
-  makeBoard();
-  let cr=0,st=0,ic=0;
-  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(!g)continue;if(g.type===TYPE_CRATE)cr++;if(g.type===TYPE_STONE)st++;if(g.frozen)ic++;}
-  
-  let m=document.getElementById('lvl-modal');m.classList.remove('hidden');document.getElementById('ml').textContent=level;
-  let num=Math.min(2+Math.floor(level/3),4);
-  objectives=[];
-  if(cr>0){objectives.push({type:'crate',need:Math.min(cr,10),cur:0});num--;}
-  if(ic>0&&num>0){objectives.push({type:'ice',need:Math.min(ic,10),cur:0});num--;}
-  if(st>0&&num>0){objectives.push({type:'stone',need:Math.min(st,5),cur:0});num--;}
-  
-  let u=new Set();for(let i=0;i<num;i++){let t;do{t=Math.floor(Math.random()*TYPES)}while(u.has(t));u.add(t);objectives.push({type:t,need:5+level*2+Math.floor(Math.random()*5),cur:0});}
-  maxMoves=18+Math.floor(level*1.5);
-  let txt=objectives.map(o=>`${typeof o.type==='string'?OBJ_EMOJI[o.type]:EMOJI[o.type]} ×${o.need}`).join('　');
-  document.getElementById('mobj').innerHTML=`目標: ${txt}<br>手数: ${maxMoves}`;
-}
-async function startLevel(){document.getElementById('lvl-modal').classList.add('hidden');moves=maxMoves;score=0;combo=0;fixPos();updUI();if(!hasValidMoves()){animating=true;await shuffleBoard();animating=false;}}
-async function checkWin(){let w=objectives.every(o=>o.cur>=o.need);if(w){setTimeout(()=>{showMsg('🎉 クリア！ 🎉');setTimeout(()=>{level++;showLevelModal();},1500);},300);return;}if(moves<=0){setTimeout(()=>{showMsg('💔 ゲームオーバー 💔');setTimeout(()=>showLevelModal(),1500);},300);return;}if(!hasValidMoves()){animating=true;await shuffleBoard();animating=false;}}
-
-function hasValidMoves(){
-  for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
-    var g=board[r][c];if(!g)continue;
-    if(g.special)return true;
-    if(g.type>=100||g.frozen)continue;
-    if(c+1<COLS){var rg=board[r][c+1];if(rg&&rg.type<100&&!rg.frozen){if(rg.special)return true;swapData(r,c,r,c+1);var m=findMatches();swapData(r,c,r,c+1);if(m.length>0)return true;}}
-    if(r+1<ROWS){var dg=board[r+1][c];if(dg&&dg.type<100&&!dg.frozen){if(dg.special)return true;swapData(r,c,r+1,c);var m=findMatches();swapData(r,c,r+1,c);if(m.length>0)return true;}}
-  }
-  return false;
-}
-function swapData(r1,c1,r2,c2){var t=board[r1][c1];board[r1][c1]=board[r2][c2];board[r2][c2]=t;}
-
-async function shuffleBoard(){
-  showMsg('🔄 シャッフル 🔄');
-  await wait(800);
-  let att=0;
-  while(att<100){
-    let fg=[],fp=[];
-    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(g&&g.type<100&&!g.special&&!g.frozen){fg.push(g.type);fp.push({r,c});}}
-    for(let i=fg.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[fg[i],fg[j]]=[fg[j],fg[i]];}
-    fp.forEach((p,idx)=>{board[p.r][p.c].type=fg[idx];board[p.r][p.c].alpha=0;});
-    if(findMatches().length===0 && hasValidMoves())break;
-    att++;
-  }
-  fixPos();
-  await anim(400, t=>{for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]&&board[r][c].alpha<1)board[r][c].alpha=t;});
-}
-
 function loop(){try{draw();updateParticles();}catch(e){}requestAnimationFrame(loop);}
+
 init();
 </script>
 </body>
