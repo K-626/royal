@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>Royal Match Clone - Optimized</title>
+<title>Royal Match Clone - Fixed</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);min-height:100vh;display:flex;flex-direction:column;align-items:center;font-family:'Segoe UI',sans-serif;color:#fff;overflow:hidden;touch-action:none}
@@ -72,7 +73,6 @@ function resize(){
   pCanvas.width=window.innerWidth;pCanvas.height=window.innerHeight;
 }
 
-// --- Board Construction ---
 function makeBoard(){
   board=[];
   for(let r=0;r<ROWS;r++){
@@ -81,7 +81,6 @@ function makeBoard(){
       board[r][c]={type:rndType(r,c),x:c*cellSz,y:r*cellSz,ty:r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:null,frozen:false};
     }
   }
-  // Obstacle Generation
   if(level>=2)for(let i=0;i<Math.min(level+2,12);i++){let r=Math.floor(Math.random()*(ROWS-2))+2,c=Math.floor(Math.random()*COLS);board[r][c].type=TYPE_CRATE;}
   if(level>=3)for(let i=0;i<Math.min(level,10);i++){let r=Math.floor(Math.random()*(ROWS-1))+1,c=Math.floor(Math.random()*COLS);if(board[r][c].type<100)board[r][c].frozen=true;}
   if(level>=4)for(let i=0;i<Math.min(level-1,8);i++){let r=Math.floor(Math.random()*(ROWS-2))+2,c=Math.floor(Math.random()*COLS);board[r][c].type=TYPE_STONE;board[r][c].frozen=false;}
@@ -94,14 +93,11 @@ function rndType(r,c){
   return t;
 }
 
-// --- Draw Functions ---
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
     ctx.fillStyle=(r+c)%2===0?'rgba(255,255,255,.08)':'rgba(255,255,255,.04)';
     ctx.fillRect(c*cellSz,r*cellSz,cellSz,cellSz);
-    ctx.strokeStyle='rgba(255,255,255,.05)';
-    ctx.strokeRect(c*cellSz,r*cellSz,cellSz,cellSz);
   }
   if(!board||board.length===0)return;
   for(var r=0;r<ROWS;r++){
@@ -160,8 +156,8 @@ function drawSpecial(c,type,sz){
 function drawGem(c,type,sz){
   var grd=c.createRadialGradient(-sz*.3,-sz*.3,sz*.1,0,0,sz);
   grd.addColorStop(0,'rgba(255,255,255,0.7)');
-  grd.addColorStop(0.2,COLORS[type]);
-  grd.addColorStop(1,shadeColor(COLORS[type], -30));
+  grd.addColorStop(0.2,COLORS[type]||'#fff');
+  grd.addColorStop(1,shadeColor(COLORS[type]||'#fff', -30));
   c.fillStyle=grd;
   c.beginPath();
   if(SHAPES[type]==='circle'){c.arc(0,0,sz,0,Math.PI*2);}
@@ -230,16 +226,11 @@ function onMove(e){
 }
 function onUp(){dragStart=null;dragging=false;}
 
-// --- Special & Logic ---
 async function tapSpecial(r,c){
   animating=true;moves--;updUI();combo=0;
-  var sp=board[r][c].special, toRemove=[];
-  if(sp==='drone'){var target=findDroneTarget();toRemove=target?[{r,c},target]:[{r,c}];}
-  else if(sp==='rainbow'){
-    var pick=Math.floor(Math.random()*TYPES);toRemove=[{r,c}];
-    for(var rr=0;rr<ROWS;rr++)for(var cc=0;cc<COLS;cc++)if(board[rr][cc]?.type===pick)toRemove.push({r:rr,c:cc});
-  }else{toRemove=getSpecialTargets(r,c,sp);toRemove.push({r,c});}
-  dedup(toRemove);await processSpecialRemove(toRemove);
+  var sp=board[r][c].special, targets=getSpecialTargets(r,c,sp);
+  targets.push({r,c});
+  await processSpecialRemove(targets);
   animating=false;checkWin();
 }
 
@@ -258,37 +249,55 @@ function getSpecialTargets(r,c,sp){
   if(sp==='rocket_h')for(var i=0;i<COLS;i++)t.push({r,c:i});
   else if(sp==='rocket_v')for(var i=0;i<ROWS;i++)t.push({r:i,c});
   else if(sp==='bomb')for(var dr=-2;dr<=2;dr++)for(var dc=-2;dc<=2;dc++){var nr=r+dr,nc=c+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)t.push({r:nr,c:nc});}
+  else if(sp==='drone'){var target=findDroneTarget();if(target)t.push(target);}
+  else if(sp==='rainbow'){
+    var pick=Math.floor(Math.random()*TYPES);
+    for(var rr=0;rr<ROWS;rr++)for(var cc=0;cc<COLS;cc++)if(board[rr][cc]?.type===pick)t.push({r:rr,c:cc});
+  }
   return t;
 }
 
 function dedup(arr){var seen={};var i=0;while(i<arr.length){var k=arr[i].r+','+arr[i].c;if(seen[k])arr.splice(i,1);else{seen[k]=1;i++;}}}
 
 async function processSpecialRemove(targets){
-  var extra=[];
-  targets.forEach(m=>{var g=board[m.r]&&board[m.r][m.c];if(g&&g.special)extra=extra.concat(getSpecialTargets(m.r,m.c,g.special));});
-  if(extra.length)targets=targets.concat(extra);
   dedup(targets);
-  let unfrozen=new Set(), toRemove=[];
-  targets.forEach(m=>{
-    var g=board[m.r]&&board[m.r][m.c];if(!g)return;
-    if(g.type===TYPE_STONE){toRemove.push(m);objectives.forEach(o=>{if(o.type==='stone'&&o.cur<o.need)o.cur++;});}
-    else if(g.type===TYPE_CRATE){toRemove.push(m);objectives.forEach(o=>{if(o.type==='crate'&&o.cur<o.need)o.cur++;});}
-    else if(g.frozen){unfrozen.add(m.r+','+m.c);objectives.forEach(o=>{if(o.type==='ice'&&o.cur<o.need)o.cur++;});}
-    else{toRemove.push(m);if(g.type>=0&&g.type<100)objectives.forEach(o=>{if(o.type===g.type&&o.cur<o.need)o.cur++;});}
+  // 連鎖チェック（誘爆）
+  let extra = [];
+  targets.forEach(m => {
+    let g = board[m.r] && board[m.r][m.c];
+    if (g && g.special && !m.processed) {
+      m.processed = true;
+      let sub = getSpecialTargets(m.r, m.c, g.special);
+      extra = extra.concat(sub);
+    }
   });
-  score+=toRemove.length*15;updUI();
-  unfrozen.forEach(pos=>{let p=pos.split(','),r=+p[0],c=+p[1];board[r][c].frozen=false;spawnParticles(c*cellSz+cellSz/2,r*cellSz+cellSz/2,'#add8e6');});
+  if (extra.length > 0) { targets = targets.concat(extra); dedup(targets); }
+
+  let toRemove = [];
+  targets.forEach(m => {
+    let g = board[m.r] && board[m.r][m.c];
+    if (!g) return;
+    if (g.type === TYPE_STONE) { toRemove.push(m); updObjCnt('stone'); }
+    else if (g.type === TYPE_CRATE) { toRemove.push(m); updObjCnt('crate'); }
+    else if (g.frozen) { board[m.r][m.c].frozen = false; updObjCnt('ice'); spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,'#add8e6'); }
+    else { toRemove.push(m); if(g.type<100) updObjCnt(g.type); }
+  });
+
+  score += toRemove.length * 20;
+  updUI();
   await animRemove(toRemove);
-  toRemove.forEach(m=>{
-    let g=board[m.r][m.c];
-    spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,g?.type===TYPE_CRATE?'#8B4513':g?.type===TYPE_STONE?'#7f8c8d':'#ffd700');
-    board[m.r][m.c]=null;
+  toRemove.forEach(m => {
+    let g = board[m.r][m.c];
+    spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,g?.type===TYPE_CRATE?'#8B4513':'#ffd700');
+    board[m.r][m.c] = null;
   });
-  await drop();await fillEmpty();
-  var matches=findMatches();if(matches.length)await processMatches(matches);
+  await drop(); await fillEmpty();
+  let m = findMatches(); if (m.length) await processMatches(m);
 }
 
-// --- Matches & Specials (Prioritized Logic) ---
+function updObjCnt(type){objectives.forEach(o=>{if(o.type===type&&o.cur<o.need)o.cur++;});}
+
+// --- Matching Logic ---
 function findSpecials(matches) {
   var specials = [];
   var set = new Set(matches.map(m => m.r + ',' + m.c));
@@ -298,14 +307,13 @@ function findSpecials(matches) {
     if (!byCol[m.c]) byCol[m.c] = []; byCol[m.c].push(m.r);
   });
 
-  // 1. Rainbow (5 in a row)
   for (var r in byRow) {
     byRow[r].sort((a,b)=>a-b); let run=1;
     for (let i=1; i<=byRow[r].length; i++) {
       if (i<byRow[r].length && byRow[r][i]===byRow[r][i-1]+1) run++;
       else {
         if (run>=5) {
-          specials.push({ r:+r, c:byRow[r][i-3], type:-1, special:'rainbow' });
+          specials.push({ r:+r, c:byRow[r][i-Math.ceil(run/2)], type:-1, special:'rainbow' });
           for(let j=1; j<=run; j++) set.delete(r+','+byRow[r][i-j]);
         }
         run=1;
@@ -318,17 +326,14 @@ function findSpecials(matches) {
       if (i<byCol[c].length && byCol[c][i]===byCol[c][i-1]+1) run++;
       else {
         if (run>=5) {
-          if(!specials.find(s=>s.special==='rainbow'&&s.c===+c)){
-            specials.push({ r:byCol[c][i-3], c:+c, type:-1, special:'rainbow' });
-            for(let j=1; j<=run; j++) set.delete(byCol[c][i-j]+','+c);
-          }
+          specials.push({ r:byCol[c][i-Math.ceil(run/2)], c:+c, type:-1, special:'rainbow' });
+          for(let j=1; j<=run; j++) set.delete(byCol[c][i-j]+','+c);
         }
         run=1;
       }
     }
   }
 
-  // 2. Bomb (T/L shape)
   matches.forEach(m => {
     if (!set.has(m.r+','+m.c)) return;
     var h=0, v=0, t=board[m.r][m.c]?.type;
@@ -336,15 +341,11 @@ function findSpecials(matches) {
     for(var cc=m.c+1; cc<COLS && board[m.r][cc]?.type===t; cc++) h++;
     for(var rr=m.r-1; rr>=0 && board[rr][m.c]?.type===t; rr--) v++;
     for(var rr=m.r+1; rr<ROWS && board[rr][m.c]?.type===t; rr++) v++;
-    if (h>=2 && v>=2) {
-      specials.push({ r:m.r, c:m.c, type:-1, special:'bomb' });
-      set.delete(m.r+','+m.c);
-    }
+    if (h>=2 && v>=2) { specials.push({ r:m.r, c:m.c, type:-1, special:'bomb' }); set.delete(m.r+','+m.c); }
   });
 
-  // 3. Rocket (4 in a row)
   for (var r in byRow) {
-    byRow[r].forEach((c, i) => {
+    byRow[r].forEach(c => {
       if (set.has(r+','+c) && byRow[r].includes(c+1) && byRow[r].includes(c+2) && byRow[r].includes(c+3)) {
         specials.push({ r:+r, c:c+1, type:-1, special:'rocket_h' });
         for(let j=0; j<4; j++) set.delete(r+','+(c+j));
@@ -352,7 +353,7 @@ function findSpecials(matches) {
     });
   }
   for (var c in byCol) {
-    byCol[c].forEach((r, i) => {
+    byCol[c].forEach(r => {
       if (set.has(r+','+c) && byCol[c].includes(r+1) && byCol[c].includes(r+2) && byCol[c].includes(r+3)) {
         specials.push({ r:r+1, c:+c, type:-1, special:'rocket_v' });
         for(let j=0; j<4; j++) set.delete((r+j)+','+c);
@@ -360,7 +361,6 @@ function findSpecials(matches) {
     });
   }
 
-  // 4. Drone (2x2 Square)
   for (var r=0; r<ROWS-1; r++) {
     for (var c=0; c<COLS-1; c++) {
       var k1=r+','+c, k2=r+','+(c+1), k3=(r+1)+','+c, k4=(r+1)+','+(c+1);
@@ -377,7 +377,7 @@ function findMatches(){
   var matched=new Set();
   for(var r=0;r<ROWS;r++){
     var c=0;while(c<COLS){
-      var t=board[r][c]?.type;if(t==null||t<0){c++;continue;}
+      var t=board[r][c]?.type;if(t==null||t<0||t>=100){c++;continue;}
       var len=1;while(c+len<COLS&&board[r][c+len]?.type===t)len++;
       if(len>=3)for(var i=0;i<len;i++)matched.add(r+','+(c+i));
       c+=len;
@@ -385,45 +385,100 @@ function findMatches(){
   }
   for(var c=0;c<COLS;c++){
     var r=0;while(r<ROWS){
-      var t=board[r][c]?.type;if(t==null||t<0){r++;continue;}
+      var t=board[r][c]?.type;if(t==null||t<0||t>=100){r++;continue;}
       var len=1;while(r+len<ROWS&&board[r+len][c]?.type===t)len++;
       if(len>=3)for(var i=0;i<len;i++)matched.add((r+i)+','+c);
       r+=len;
     }
-  }
-  for(var r=0;r<ROWS-1;r++)for(var c=0;c<COLS-1;c++){
-    var t=board[r][c]?.type;if(t==null||t<0)continue;
-    if(board[r][c+1]?.type===t && board[r+1][c]?.type===t && board[r+1][c+1]?.type===t)
-    {matched.add(r+','+c);matched.add(r+','+(c+1));matched.add((r+1)+','+c);matched.add((r+1)+','+(c+1));}
   }
   return [...matched].map(s=>{var p=s.split(',');return{r:+p[0],c:+p[1]};});
 }
 
 async function processMatches(matches){
   while(matches.length>0){
-    combo++;score+=matches.length*10*combo;
-    let dmgCrates=new Set(), unfrozen=new Set(), toRemove=[];
+    combo++;
+    var specials=findSpecials(matches);
+    let toRemove=[];
     matches.forEach(m=>{
       [[-1,0],[1,0],[0,-1],[0,1]].forEach(d=>{
         let nr=m.r+d[0],nc=m.c+d[1];
-        if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&board[nr][nc]?.type===TYPE_CRATE)dmgCrates.add(nr+','+nc);
+        if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&board[nr][nc]?.type===TYPE_CRATE)toRemove.push({r:nr,c:nc});
       });
       let g=board[m.r][m.c];
-      if(g.frozen){unfrozen.add(m.r+','+m.c);objectives.forEach(o=>{if(o.type==='ice'&&o.cur<o.need)o.cur++;});}
-      else{toRemove.push(m);if(g.type>=0&&g.type<100)objectives.forEach(o=>{if(o.type===g.type&&o.cur<o.need)o.cur++;});}
+      if(g.frozen){ board[m.r][m.c].frozen=false; updObjCnt('ice'); }
+      else { toRemove.push(m); if(g.type<100) updObjCnt(g.type); }
     });
-    unfrozen.forEach(pos=>{let p=pos.split(','),r=+p[0],c=+p[1];board[r][c].frozen=false;});
-    dmgCrates.forEach(pos=>{let p=pos.split(','),r=+p[0],c=+p[1];toRemove.push({r,c});objectives.forEach(o=>{if(o.type==='crate'&&o.cur<o.need)o.cur++;});});
-    var specials=findSpecials(matches);
+    
     await animRemove(toRemove);
     toRemove.forEach(m=>{board[m.r][m.c]=null;});
-    specials.forEach(s=>board[s.r][s.c]={type:s.type,x:s.c*cellSz,y:s.r*cellSz,ty:s.r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:s.special,frozen:false});
+    specials.forEach(s=>board[s.r][s.c]={type:-1,x:s.c*cellSz,y:s.r*cellSz,ty:s.r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:s.special,frozen:false});
     await drop();await fillEmpty();updUI();matches=findMatches();
   }
-  if(combo>=3)showMsg(combo>=5?'✨ AMAZING! ✨':combo>=4?'🔥 GREAT! 🔥':'⭐ NICE! ⭐');
 }
 
-// --- UI & State ---
+// --- Core Actions ---
+async function trySwap(r1,c1,r2,c2){
+  animating=true;var g1=board[r1][c1],g2=board[r2][c2];
+  if(!g1||!g2||g1.type>=100||g2.type>=100||g1.frozen||g2.frozen){animating=false;return;}
+  
+  await animSwap(r1,c1,r2,c2);
+  swapData(r1,c1,r2,c2); fixPos();
+
+  let m=findMatches();
+  let hasSpecial = g1.special || g2.special;
+
+  if(m.length || hasSpecial){
+    moves--; combo=0;
+    if(g1.special && g2.special){
+      let targets=combineSpecials(r1,c1,g1.special,r2,c2,g2.special);
+      await processSpecialRemove(targets);
+    } else if(hasSpecial){
+      let sr=g1.special?r1:r2, sc=g1.special?c1:c2, sp=g1.special||g2.special;
+      let targets=getSpecialTargets(sr,sc,sp); targets.push({r:sr,c:sc});
+      await processSpecialRemove(targets);
+    } else {
+      await processMatches(m);
+    }
+  } else {
+    await animSwap(r1,c1,r2,c2);
+    swapData(r1,c1,r2,c2); fixPos();
+  }
+  animating=false; checkWin();
+}
+
+function combineSpecials(r1,c1,s1,r2,c2,s2){
+  var t=[], isR=s=>s==='rocket_h'||s==='rocket_v';
+  if(isR(s1)&&isR(s2)){for(let i=0;i<COLS;i++)t.push({r:r1,c:i});for(let i=0;i<ROWS;i++)t.push({r:i,c:c1});}
+  else if((isR(s1)&&s2==='bomb')||(s1==='bomb'&&isR(s2))){
+    let rr=s1==='bomb'?r1:r2,cc=s1==='bomb'?c1:c2;
+    for(let dr=-1;dr<=1;dr++)for(let i=0;i<COLS;i++)if(rr+dr>=0&&rr+dr<ROWS)t.push({r:rr+dr,c:i});
+    for(let dc=-1;dc<=1;dc++)for(let i=0;i<ROWS;i++)if(cc+dc>=0&&cc+dc<COLS)t.push({r:i,c:cc+dc});
+  }else if(s1==='bomb'&&s2==='bomb'){for(let dr=-3;dr<=3;dr++)for(let dc=-3;dc<=3;dc++){let nr=r1+dr,nc=c1+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)t.push({r:nr,c:nc});}}
+  else if(s1==='rainbow'||s2==='rainbow'){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)t.push({r,c});}
+  t.push({r:r1,c:c1},{r:r2,c:c2});return t;
+}
+
+// --- UI & Utils ---
+function swapData(r1,c1,r2,c2){var t=board[r1][c1];board[r1][c1]=board[r2][c2];board[r2][c2]=t;}
+function fixPos(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(g){g.x=c*cellSz;g.y=r*cellSz;g.ty=r*cellSz;g.ox=0;g.oy=0;}}}
+async function animSwap(r1,c1,r2,c2){let g1=board[r1][c1],g2=board[r2][c2],dx=(c2-c1)*cellSz,dy=(r2-r1)*cellSz;return anim(ANIM_MS,t=>{let e=easeOut(t);if(g1){g1.ox=dx*e;g1.oy=dy*e;}if(g2){g2.ox=-dx*e;g2.oy=-dy*e;}});}
+async function animRemove(matches){return anim(ANIM_MS,t=>{matches.forEach(m=>{let g=board[m.r]?.[m.c];if(g){g.scale=1-t;g.alpha=1-t;}});});}
+async function animDrop(){let gs=[];for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]?.y!==board[r][c]?.ty)gs.push(board[r][c]);if(!gs.length)return;let st=gs.map(g=>g.y);return anim(ANIM_MS*1.5,t=>{let e=easeBounce(t);gs.forEach((g,i)=>g.y=st[i]+(g.ty-st[i])*e);});}
+async function drop(){
+  let moved=false;for(let c=0;c<COLS;c++){let empty=0;for(let r=ROWS-1;r>=0;r--){if(!board[r][c])empty++;else if(board[r][c].type>=100)empty=0;else if(empty>0){board[r+empty][c]=board[r][c];board[r][c]=null;board[r+empty][c].ty=(r+empty)*cellSz;moved=true;}}}
+  if(moved)await animDrop();
+}
+async function fillEmpty(){
+  for(var c=0;c<COLS;c++){var emp=[];for(var r=0;r<ROWS;r++)if(!board[r][c])emp.push(r);for(var i=0;i<emp.length;i++){board[emp[i]][c]={type:rndType(emp[i],c),x:c*cellSz,y:-(emp.length-i)*cellSz,ty:emp[i]*cellSz,ox:0,oy:0,scale:1,alpha:1,special:null,frozen:false};}}
+  await animDrop();
+}
+
+function anim(dur,fn){return new Promise(res=>{let s=performance.now();requestAnimationFrame(function f(n){let t=Math.min((n-s)/dur,1);fn(t);if(t<1)requestAnimationFrame(f);else res();});});}
+function easeOut(t){return 1-Math.pow(1-t,3);}
+function easeBounce(t){if(t<.7)return(t/.7)**2;let b=(t-.7)/.3;return 1+Math.sin(b*Math.PI)*.08;}
+function spawnParticles(x,y,color){let r=canvas.getBoundingClientRect();for(let i=0;i<8;i++){let a=Math.random()*Math.PI*2,s=2+Math.random()*3;particles.push({x:r.left+x,y:r.top+y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,color,sz:3+Math.random()*4});}}
+function updateParticles(){pCtx.clearRect(0,0,pCanvas.width,pCanvas.height);particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.life-=.02;pCtx.globalAlpha=Math.max(0,p.life);pCtx.fillStyle=p.color;pCtx.beginPath();pCtx.arc(p.x,p.y,p.sz*p.life,0,Math.PI*2);pCtx.fill();return p.life>0;});}
+
 function showLevelModal() {
   makeBoard();
   let aCr=0, aSt=0, aIc=0;
@@ -448,80 +503,14 @@ function showLevelModal() {
   document.getElementById('mobj').innerHTML=`目標: ${txt}<br>手数: ${maxMoves}`;
 }
 
-async function startLevel(){document.getElementById('lvl-modal').classList.add('hidden');moves=maxMoves;score=0;combo=0;fixPos();updUI();if(!hasValidMoves())await shuffleBoard();}
-async function checkWin(){
-  if(objectives.every(o=>o.cur>=o.need)){setTimeout(()=>{showMsg('🎉 CLEAR! 🎉');level++;setTimeout(()=>showLevelModal(),1200);},300);return;}
-  if(moves<=0){setTimeout(()=>{showMsg('💔 GAME OVER 💔');setTimeout(()=>showLevelModal(),1500);},300);return;}
-  if(!hasValidMoves()){animating=true;await shuffleBoard();animating=false;}
-}
-
-// --- Utils & Core ---
-function swapData(r1,c1,r2,c2){var t=board[r1][c1];board[r1][c1]=board[r2][c2];board[r2][c2]=t;}
-async function trySwap(r1,c1,r2,c2){
-  animating=true;var g1=board[r1][c1],g2=board[r2][c2];
-  if(!g1||!g2||g1.type>=100||g2.type>=100||g1.frozen||g2.frozen){animating=false;return;}
-  await animSwap(r1,c1,r2,c2);swapData(r1,c1,r2,c2);fixPos();
-  let m=findMatches();
-  if(!m.length && !g1.special && !g2.special){await animSwap(r1,c1,r2,c2);swapData(r1,c1,r2,c2);fixPos();animating=false;return;}
-  moves--;combo=0;
-  if(g1.special || g2.special) {
-    var targets=[];
-    if(g1.special && g2.special) targets=combineSpecials(r1,c1,g1.special,r2,c2,g2.special);
-    else {var sr=g1.special?r1:r2, sc=g1.special?c1:c2, sp=g1.special||g2.special; targets=getSpecialTargets(sr,sc,sp);targets.push({r:sr,c:sc});}
-    dedup(targets);await processSpecialRemove(targets);
-  } else await processMatches(m);
-  animating=false;checkWin();
-}
-function combineSpecials(r1,c1,s1,r2,c2,s2){
-  var t=[], isR=s=>s==='rocket_h'||s==='rocket_v';
-  if(isR(s1)&&isR(s2)){for(let i=0;i<COLS;i++)t.push({r:r1,c:i});for(let i=0;i<ROWS;i++)t.push({r:i,c:c1});}
-  else if((isR(s1)&&s2==='bomb')||(s1==='bomb'&&isR(s2))){
-    let rr=s1==='bomb'?r1:r2,cc=s1==='bomb'?c1:c2;
-    for(let dr=-1;dr<=1;dr++)for(let i=0;i<COLS;i++)if(rr+dr>=0&&rr+dr<ROWS)t.push({r:rr+dr,c:i});
-    for(let dc=-1;dc<=1;dc++)for(let i=0;i<ROWS;i++)if(cc+dc>=0&&cc+dc<COLS)t.push({r:i,c:cc+dc});
-  }else if(s1==='bomb'&&s2==='bomb'){for(let dr=-3;dr<=3;dr++)for(let dc=-3;dc<=3;dc++){let nr=r1+dr,nc=c1+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)t.push({r:nr,c:nc});}}
-  t.push({r:r1,c:c1},{r:r2,c:c2});return t;
-}
-
-function hasValidMoves(){
-  for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
-    var g=board[r][c];if(!g||g.frozen)continue;if(g.special)return true;
-    if(c+1<COLS){var rg=board[r][c+1];if(rg&&!rg.frozen&&rg.type<100){swapData(r,c,r,c+1);var m=findMatches();swapData(r,c,r,c+1);if(m.length)return true;}}
-    if(r+1<ROWS){var dg=board[r+1][c];if(dg&&!dg.frozen&&dg.type<100){swapData(r,c,r+1,c);var m=findMatches();swapData(r,c,r+1,c);if(m.length)return true;}}
-  }
-  return false;
-}
-
-async function shuffleBoard(){
-  showMsg('🔄 SHUFFLE 🔄');await anim(400,t=>{});
-  let fg=[], fp=[];
-  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(g&&g.type<100&&!g.special&&!g.frozen){fg.push(g.type);fp.push({r,c});}}
-  for(let i=fg.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[fg[i],fg[j]]=[fg[j],fg[i]];}
-  fp.forEach((p,idx)=>{board[p.r][p.c].type=fg[idx];});
-  fixPos();
-}
-
-function fixPos(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(g){g.x=c*cellSz;g.y=r*cellSz;g.ty=r*cellSz;g.ox=0;g.oy=0;}}}
-async function animSwap(r1,c1,r2,c2){let g1=board[r1][c1],g2=board[r2][c2],dx=(c2-c1)*cellSz,dy=(r2-r1)*cellSz;return anim(ANIM_MS,t=>{let e=easeOut(t);g1.ox=dx*e;g1.oy=dy*e;g2.ox=-dx*e;g2.oy=-dy*e;});}
-async function animRemove(matches){return anim(ANIM_MS,t=>{matches.forEach(m=>{let g=board[m.r]?.[m.c];if(g){g.scale=1-t;g.alpha=1-t;}});});}
-async function animDrop(){let gs=[];for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]?.y!==board[r][c]?.ty)gs.push(board[r][c]);if(!gs.length)return;let st=gs.map(g=>g.y);return anim(ANIM_MS*1.5,t=>{let e=easeBounce(t);gs.forEach((g,i)=>g.y=st[i]+(g.ty-st[i])*e);});}
-async function drop(){
-  let moved=false;for(let c=0;c<COLS;c++){let empty=0;for(let r=ROWS-1;r>=0;r--){if(!board[r][c])empty++;else if(board[r][c].type>=100)empty=0;else if(empty>0){board[r+empty][c]=board[r][c];board[r][c]=null;board[r+empty][c].ty=(r+empty)*cellSz;moved=true;}}}
-  if(moved)await animDrop();
-}
-async function fillEmpty(){
-  for(var c=0;c<COLS;c++){var emp=[];for(var r=0;r<ROWS;r++)if(!board[r][c])emp.push(r);for(var i=0;i<emp.length;i++){board[emp[i]][c]={type:rndType(emp[i],c),x:c*cellSz,y:-(emp.length-i)*cellSz,ty:emp[i]*cellSz,ox:0,oy:0,scale:1,alpha:1,special:null,frozen:false};}}
-  await animDrop();
-}
-
-function anim(dur,fn){return new Promise(res=>{let s=performance.now();requestAnimationFrame(function f(n){let t=Math.min((n-s)/dur,1);fn(t);if(t<1)requestAnimationFrame(f);else res();});});}
-function easeOut(t){return 1-Math.pow(1-t,3);}
-function easeBounce(t){if(t<.7)return(t/.7)**2;let b=(t-.7)/.3;return 1+Math.sin(b*Math.PI)*.08;}
-function spawnParticles(x,y,color){let r=canvas.getBoundingClientRect();for(let i=0;i<8;i++){let a=Math.random()*Math.PI*2,s=2+Math.random()*3;particles.push({x:r.left+x,y:r.top+y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,color,sz:3+Math.random()*4});}}
-function updateParticles(){pCtx.clearRect(0,0,pCanvas.width,pCanvas.height);particles=particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.1;p.life-=.02;pCtx.globalAlpha=Math.max(0,p.life);pCtx.fillStyle=p.color;pCtx.beginPath();pCtx.arc(p.x,p.y,p.sz*p.life,0,Math.PI*2);pCtx.fill();return p.life>0;});}
+async function startLevel(){document.getElementById('lvl-modal').classList.add('hidden');moves=maxMoves;score=0;combo=0;fixPos();updUI();}
 function updUI(){document.getElementById('score').textContent=score;document.getElementById('moves').textContent=moves;document.getElementById('lvl').textContent=level;updObjectives();}
 function updObjectives(){document.getElementById('objectives').innerHTML=objectives.map(o=>{let isStr=typeof o.type==='string';let icon=isStr?OBJ_EMOJI[o.type]:EMOJI[o.type];let dot=isStr?'transparent':COLORS[o.type];return `<div class="obj${o.cur>=o.need?' done':''}"><span class="dot" style="background:${dot}; display:${isStr?'none':'inline-block'}"></span>${icon} ${o.cur}/${o.need}</div>`;}).join('');}
 function showMsg(txt){let el=document.getElementById('msg');el.textContent=txt;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1200);}
+async function checkWin(){
+  if(objectives.every(o=>o.cur>=o.need)){setTimeout(()=>{showMsg('🎉 CLEAR! 🎉');level++;setTimeout(()=>showLevelModal(),1200);},300);return;}
+  if(moves<=0){setTimeout(()=>{showMsg('💔 GAME OVER 💔');setTimeout(()=>showLevelModal(),1500);},300);return;}
+}
 function loop(){try{draw();updateParticles();}catch(e){}requestAnimationFrame(loop);}
 
 init();
