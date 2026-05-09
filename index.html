@@ -46,7 +46,7 @@ const COLS=8,ROWS=8,TYPES=6,ANIM_MS=180;
 const COLORS=['#ff3d71','#3366ff','#ffaa00','#00d68f','#a665ff','#ff7e1a'];
 const SHAPES=['circle','diamond','square','triangle','star','heart'];
 const EMOJI=['🔴','🔵','🟡','🟢','🟣','🟠'];
-const TYPE_CRATE=100, TYPE_STONE=101;
+const TYPE_SPECIAL=-1, TYPE_CRATE=100, TYPE_STONE=101;
 const OBJ_EMOJI={'crate':'📦','ice':'🧊','stone':'🪨'};
 let cellSz,canvas,ctx,pCanvas,pCtx;
 let board=[],sel=null,animating=false,score=0,moves=0,level=1,combo=0;
@@ -70,6 +70,7 @@ function resize(){
   cellSz=Math.floor(w/COLS);
   canvas.width=cellSz*COLS;canvas.height=cellSz*ROWS;
   pCanvas.width=window.innerWidth;pCanvas.height=window.innerHeight;
+  if(board.length)fixPos();
 }
 
 function makeBoard(){
@@ -80,9 +81,48 @@ function makeBoard(){
       board[r][c]={type:rndType(r,c),x:c*cellSz,y:r*cellSz,ty:r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:null,frozen:false};
     }
   }
-  if(level>=2)for(let i=0;i<Math.min(level+2,12);i++){let r=Math.floor(Math.random()*(ROWS-2))+2,c=Math.floor(Math.random()*COLS);board[r][c].type=TYPE_CRATE;}
-  if(level>=3)for(let i=0;i<Math.min(level,10);i++){let r=Math.floor(Math.random()*(ROWS-1))+1,c=Math.floor(Math.random()*COLS);if(board[r][c].type<100)board[r][c].frozen=true;}
-  if(level>=4)for(let i=0;i<Math.min(level-1,8);i++){let r=Math.floor(Math.random()*(ROWS-2))+2,c=Math.floor(Math.random()*COLS);board[r][c].type=TYPE_STONE;board[r][c].frozen=false;}
+  // 障害物配置（重複しないようにSetで管理）
+  let used=new Set();
+  let pickEmpty=(minR=0)=>{
+    for(let tries=0;tries<50;tries++){
+      let r=Math.floor(Math.random()*(ROWS-minR))+minR;
+      let c=Math.floor(Math.random()*COLS);
+      let k=r+','+c;
+      if(!used.has(k)){used.add(k);return{r,c};}
+    }
+    return null;
+  };
+  if(level>=2){
+    let n=Math.min(level+2,12);
+    for(let i=0;i<n;i++){
+      let p=pickEmpty(2);if(!p)break;
+      board[p.r][p.c].type=TYPE_CRATE;board[p.r][p.c].frozen=false;board[p.r][p.c].special=null;
+    }
+  }
+  if(level>=4){
+    let n=Math.min(level-1,8);
+    for(let i=0;i<n;i++){
+      let p=pickEmpty(2);if(!p)break;
+      board[p.r][p.c].type=TYPE_STONE;board[p.r][p.c].frozen=false;board[p.r][p.c].special=null;
+    }
+  }
+  if(level>=3){
+    let n=Math.min(level,10);
+    for(let i=0;i<n;i++){
+      // 氷は通常宝石の上にのみ
+      let p=null;
+      for(let tries=0;tries<50;tries++){
+        let r=Math.floor(Math.random()*(ROWS-1))+1;
+        let c=Math.floor(Math.random()*COLS);
+        let k='ice_'+r+','+c;
+        if(!used.has(k)&&board[r][c].type<100&&!board[r][c].frozen){
+          used.add(k);p={r,c};break;
+        }
+      }
+      if(!p)break;
+      board[p.r][p.c].frozen=true;
+    }
+  }
 }
 
 function rndType(r,c){
@@ -107,17 +147,15 @@ function draw(){
       ctx.globalAlpha=g.alpha;
       ctx.save();ctx.translate(cx,cy);
       if(sel&&sel.r===r&&sel.c===c){
-        ctx.shadowColor=g.special?'#ffd700':COLORS[g.type]||'#fff';ctx.shadowBlur=20;
+        ctx.shadowColor=g.special?'#ffd700':(COLORS[g.type]||'#fff');ctx.shadowBlur=20;
         ctx.strokeStyle='#fff';ctx.lineWidth=3;
         ctx.beginPath();ctx.arc(0,0,sz+4,0,Math.PI*2);ctx.stroke();
       }
-      if(g.type===TYPE_CRATE) drawCrate(ctx,sz);
+      if(g.special) drawSpecial(ctx,g.special,sz);
+      else if(g.type===TYPE_CRATE) drawCrate(ctx,sz);
       else if(g.type===TYPE_STONE) drawStone(ctx,sz);
-      else{
-        if(g.special)drawSpecial(ctx,g.special,sz);
-        else drawGem(ctx,g.type,sz);
-        if(g.frozen)drawIce(ctx,sz);
-      }
+      else if(g.type>=0&&g.type<TYPES) drawGem(ctx,g.type,sz);
+      if(g.frozen)drawIce(ctx,sz);
       ctx.shadowBlur=0;ctx.restore();ctx.globalAlpha=1;
     }
   }
@@ -180,8 +218,8 @@ function drawStone(c,sz){
   c.fillStyle='#95a5a6';c.beginPath();c.arc(-sz*.2,-sz*.2,sz*.4,0,Math.PI*2);c.fill();
 }
 function drawIce(c,sz){
-  c.fillStyle='rgba(173,216,230,.6)';c.fillRect(-sz,-sz,sz*2,sz*2);
-  c.strokeStyle='rgba(255,255,255,.8)';c.lineWidth=2;c.strokeRect(-sz,-sz,sz*2,sz*2);
+  c.fillStyle='rgba(173,216,230,.55)';c.fillRect(-sz,-sz,sz*2,sz*2);
+  c.strokeStyle='rgba(255,255,255,.85)';c.lineWidth=2;c.strokeRect(-sz,-sz,sz*2,sz*2);
   c.beginPath();c.moveTo(0,-sz*.8);c.lineTo(0,sz*.8);c.stroke();
   c.beginPath();c.moveTo(-sz*.8,0);c.lineTo(sz*.8,0);c.stroke();
 }
@@ -190,14 +228,21 @@ function shadeColor(color, percent) {
   var R = parseInt(color.substring(1,3),16), G = parseInt(color.substring(3,5),16), B = parseInt(color.substring(5,7),16);
   R = parseInt(R * (100 + percent) / 100); G = parseInt(G * (100 + percent) / 100); B = parseInt(B * (100 + percent) / 100);
   R = (R<255)?R:255; G = (G<255)?G:255; B = (B<255)?B:255;
+  R = (R>0)?R:0; G = (G>0)?G:0; B = (B>0)?B:0;
   return "#"+((1<<24)+(R<<16)+(G<<8)+B).toString(16).slice(1);
 }
 function drawStarPath(c,sz){let s=5,inn=sz*.45;for(let i=0;i<s*2;i++){let r=i%2===0?sz:inn;let a=Math.PI/s*i-Math.PI/2;i===0?c.moveTo(Math.cos(a)*r,Math.sin(a)*r):c.lineTo(Math.cos(a)*r,Math.sin(a)*r);}}
 function drawHeart(c,sz){c.moveTo(0,sz*.7);c.bezierCurveTo(-sz*1.2,-sz*.3,-sz*.4,-sz*1.2,0,-sz*.4);c.bezierCurveTo(sz*.4,-sz*1.2,sz*1.2,-sz*.3,0,sz*.7);}
 
-// --- Input Handling ---
+// --- Input ---
 let dragStart=null,dragging=false;
-function isSpecial(r,c){return board[r]&&board[r][c]&&board[r][c].special;}
+function isMovable(r,c){
+  let g=board[r]&&board[r][c];
+  if(!g)return false;
+  if(g.frozen)return false;
+  if(g.type===TYPE_CRATE||g.type===TYPE_STONE)return false;
+  return true;
+}
 function onDown(e){
   if(animating)return;
   let rect=canvas.getBoundingClientRect();
@@ -207,10 +252,11 @@ function onDown(e){
   dragStart={r,c,x:e.clientX,y:e.clientY};
   if(sel){
     let dr=Math.abs(sel.r-r),dc=Math.abs(sel.c-c);
-    if((dr===1&&dc===0)||(dr===0&&dc===1)){trySwap(sel.r,sel.c,r,c);sel=null;return;}
-    if(sel.r===r&&sel.c===c&&isSpecial(r,c)){tapSpecial(r,c);sel=null;return;}
+    if((dr===1&&dc===0)||(dr===0&&dc===1)){let s=sel;sel=null;trySwap(s.r,s.c,r,c);return;}
+    if(sel.r===r&&sel.c===c&&board[r][c]?.special){sel=null;tapSpecial(r,c);return;}
   }
-  sel={r,c};
+  if(isMovable(r,c)||board[r][c]?.special)sel={r,c};
+  else sel=null;
 }
 function onMove(e){
   if(!dragStart||animating)return;
@@ -219,15 +265,18 @@ function onMove(e){
     dragging=true;
     let dir=Math.abs(dx)>Math.abs(dy)?(dx>0?[0,1]:[0,-1]):(dy>0?[1,0]:[-1,0]);
     let nr=dragStart.r+dir[0],nc=dragStart.c+dir[1];
-    if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS){sel=null;trySwap(dragStart.r,dragStart.c,nr,nc);}
+    if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS){let s=dragStart;sel=null;dragStart=null;trySwap(s.r,s.c,nr,nc);return;}
     dragStart=null;
   }
 }
 function onUp(){dragStart=null;dragging=false;}
 
+// --- Special activation ---
 async function tapSpecial(r,c){
+  if(animating)return;
   animating=true;moves--;updUI();combo=0;
-  var sp=board[r][c].special, targets=getSpecialTargets(r,c,sp);
+  let sp=board[r][c].special;
+  let targets=getSpecialTargets(r,c,sp);
   targets.push({r,c});
   await processSpecialRemove(targets);
   animating=false;checkWin();
@@ -238,7 +287,7 @@ function findDroneTarget(){
   var o=needed[Math.floor(Math.random()*needed.length)], candidates=[];
   for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
     let g=board[r][c];if(!g)continue;
-    if((o.type==='crate'&&g.type===TYPE_CRATE)||(o.type==='stone'&&g.type===TYPE_STONE)||(o.type==='ice'&&g.frozen)||(g.type===o.type))candidates.push({r,c});
+    if((o.type==='crate'&&g.type===TYPE_CRATE)||(o.type==='stone'&&g.type===TYPE_STONE)||(o.type==='ice'&&g.frozen)||(typeof o.type==='number'&&g.type===o.type))candidates.push({r,c});
   }
   return candidates.length?candidates[Math.floor(Math.random()*candidates.length)]:null;
 }
@@ -248,144 +297,101 @@ function getSpecialTargets(r,c,sp){
   if(sp==='rocket_h')for(var i=0;i<COLS;i++)t.push({r,c:i});
   else if(sp==='rocket_v')for(var i=0;i<ROWS;i++)t.push({r:i,c});
   else if(sp==='bomb')for(var dr=-2;dr<=2;dr++)for(var dc=-2;dc<=2;dc++){var nr=r+dr,nc=c+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)t.push({r:nr,c:nc});}
-  else if(sp==='drone'){var target=findDroneTarget();if(target)t.push(target);}
+  else if(sp==='drone'){
+    for(let k=0;k<3;k++){let target=findDroneTarget();if(target)t.push(target);}
+  }
   else if(sp==='rainbow'){
-    var pick=Math.floor(Math.random()*TYPES);
-    for(var rr=0;rr<ROWS;rr++)for(var cc=0;cc<COLS;cc++)if(board[rr][cc]?.type===pick)t.push({r:rr,c:cc});
+    let pick=-1;
+    for(let tries=0;tries<10;tries++){let p=Math.floor(Math.random()*TYPES);
+      for(let rr=0;rr<ROWS;rr++)for(let cc=0;cc<COLS;cc++)if(board[rr][cc]?.type===p&&!board[rr][cc].special){pick=p;break;}
+      if(pick>=0)break;
+    }
+    if(pick>=0)for(var rr=0;rr<ROWS;rr++)for(var cc=0;cc<COLS;cc++)if(board[rr][cc]?.type===pick&&!board[rr][cc].special)t.push({r:rr,c:cc});
   }
   return t;
 }
 
-function dedup(arr){var seen={};var i=0;while(i<arr.length){var k=arr[i].r+','+arr[i].c;if(seen[k])arr.splice(i,1);else{seen[k]=1;i++;}}}
+function dedupTargets(arr){
+  let seen=new Set(), out=[];
+  for(let m of arr){let k=m.r+','+m.c;if(!seen.has(k)){seen.add(k);out.push(m);}}
+  return out;
+}
 
-async function processSpecialRemove(targets){
-  dedup(targets);
-  // 連鎖チェック（誘爆）
-  let extra = [];
-  targets.forEach(m => {
-    let g = board[m.r] && board[m.r][m.c];
-    if (g && g.special && !m.processed) {
-      m.processed = true;
-      let sub = getSpecialTargets(m.r, m.c, g.special);
-      extra = extra.concat(sub);
+async function processSpecialRemove(initTargets){
+  let queue=dedupTargets(initTargets);
+  let processedSpecials=new Set();
+  // 連鎖（誘爆）
+  let i=0;
+  while(i<queue.length){
+    let m=queue[i++];
+    let g=board[m.r]&&board[m.r][m.c];
+    if(g&&g.special&&!processedSpecials.has(m.r+','+m.c)){
+      processedSpecials.add(m.r+','+m.c);
+      let sub=getSpecialTargets(m.r,m.c,g.special);
+      for(let s of sub){let k=s.r+','+s.c;if(!queue.some(q=>q.r===s.r&&q.c===s.c))queue.push(s);}
     }
-  });
-  if (extra.length > 0) { targets = targets.concat(extra); dedup(targets); }
+  }
 
-  let toRemove = [];
-  targets.forEach(m => {
-    let g = board[m.r] && board[m.r][m.c];
-    if (!g) return;
-    if (g.type === TYPE_STONE) { toRemove.push(m); updObjCnt('stone'); }
-    else if (g.type === TYPE_CRATE) { toRemove.push(m); updObjCnt('crate'); }
-    else if (g.frozen) { board[m.r][m.c].frozen = false; updObjCnt('ice'); spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,'#add8e6'); }
-    else { toRemove.push(m); if(g.type<100) updObjCnt(g.type); }
-  });
+  let toRemove=[];
+  for(let m of queue){
+    let g=board[m.r]&&board[m.r][m.c];if(!g)continue;
+    if(g.frozen){
+      board[m.r][m.c].frozen=false;updObjCnt('ice');
+      spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,'#add8e6');
+      // 氷を溶かしただけで宝石は残す（特殊由来）
+      continue;
+    }
+    if(g.type===TYPE_STONE){toRemove.push(m);updObjCnt('stone');}
+    else if(g.type===TYPE_CRATE){toRemove.push(m);updObjCnt('crate');}
+    else {
+      toRemove.push(m);
+      if(g.type>=0&&g.type<TYPES) updObjCnt(g.type);
+    }
+  }
 
-  score += toRemove.length * 20;
-  updUI();
+  score+=toRemove.length*20;updUI();
   await animRemove(toRemove);
-  toRemove.forEach(m => {
-    let g = board[m.r][m.c];
-    spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,g?.type===TYPE_CRATE?'#8B4513':'#ffd700');
-    board[m.r][m.c] = null;
-  });
-  await drop(); await fillEmpty();
-  let m = findMatches(); if (m.length) await processMatches(m);
+  for(let m of toRemove){
+    let g=board[m.r][m.c];
+    spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,g?.type===TYPE_CRATE?'#8B4513':(g?.special?'#ffd700':(COLORS[g?.type]||'#ffd700')));
+    board[m.r][m.c]=null;
+  }
+  await drop();await fillEmpty();
+  let m=findMatches();if(m.length)await processMatches(m);
 }
 
 function updObjCnt(type){objectives.forEach(o=>{if(o.type===type&&o.cur<o.need)o.cur++;});}
 
-// --- Matching Logic ---
-function findSpecials(matches) {
-  var specials = [];
-  var set = new Set(matches.map(m => m.r + ',' + m.c));
-  var byRow = {}, byCol = {};
-  matches.forEach(m => {
-    if (!byRow[m.r]) byRow[m.r] = []; byRow[m.r].push(m.c);
-    if (!byCol[m.c]) byCol[m.c] = []; byCol[m.c].push(m.r);
-  });
-
-  for (var r in byRow) {
-    byRow[r].sort((a,b)=>a-b); let run=1;
-    for (let i=1; i<=byRow[r].length; i++) {
-      if (i<byRow[r].length && byRow[r][i]===byRow[r][i-1]+1) run++;
-      else {
-        if (run>=5) {
-          specials.push({ r:+r, c:byRow[r][i-Math.ceil(run/2)], type:-1, special:'rainbow' });
-          for(let j=1; j<=run; j++) set.delete(r+','+byRow[r][i-j]);
-        }
-        run=1;
-      }
-    }
-  }
-  for (var c in byCol) {
-    byCol[c].sort((a,b)=>a-b); let run=1;
-    for (let i=1; i<=byCol[c].length; i++) {
-      if (i<byCol[c].length && byCol[c][i]===byCol[c][i-1]+1) run++;
-      else {
-        if (run>=5) {
-          specials.push({ r:byCol[c][i-Math.ceil(run/2)], c:+c, type:-1, special:'rainbow' });
-          for(let j=1; j<=run; j++) set.delete(byCol[c][i-j]+','+c);
-        }
-        run=1;
-      }
-    }
-  }
-
-  matches.forEach(m => {
-    if (!set.has(m.r+','+m.c)) return;
-    var h=0, v=0, t=board[m.r][m.c]?.type;
-    for(var cc=m.c-1; cc>=0 && board[m.r][cc]?.type===t; cc--) h++;
-    for(var cc=m.c+1; cc<COLS && board[m.r][cc]?.type===t; cc++) h++;
-    for(var rr=m.r-1; rr>=0 && board[rr][m.c]?.type===t; rr--) v++;
-    for(var rr=m.r+1; rr<ROWS && board[rr][m.c]?.type===t; rr++) v++;
-    if (h>=2 && v>=2) { specials.push({ r:m.r, c:m.c, type:-1, special:'bomb' }); set.delete(m.r+','+m.c); }
-  });
-
-  for (var r in byRow) {
-    byRow[r].forEach(c => {
-      if (set.has(r+','+c) && byRow[r].includes(c+1) && byRow[r].includes(c+2) && byRow[r].includes(c+3)) {
-        specials.push({ r:+r, c:c+1, type:-1, special:'rocket_h' });
-        for(let j=0; j<4; j++) set.delete(r+','+(c+j));
-      }
-    });
-  }
-  for (var c in byCol) {
-    byCol[c].forEach(r => {
-      if (set.has(r+','+c) && byCol[c].includes(r+1) && byCol[c].includes(r+2) && byCol[c].includes(r+3)) {
-        specials.push({ r:r+1, c:+c, type:-1, special:'rocket_v' });
-        for(let j=0; j<4; j++) set.delete((r+j)+','+c);
-      }
-    });
-  }
-
-  for (var r=0; r<ROWS-1; r++) {
-    for (var c=0; c<COLS-1; c++) {
-      var k1=r+','+c, k2=r+','+(c+1), k3=(r+1)+','+c, k4=(r+1)+','+(c+1);
-      if (set.has(k1) && set.has(k2) && set.has(k3) && set.has(k4)) {
-        specials.push({ r:r, c:c, type:-1, special:'drone' });
-        set.delete(k1); set.delete(k2); set.delete(k3); set.delete(k4);
-      }
-    }
-  }
-  return specials;
-}
-
+// --- Matching ---
 function findMatches(){
+  // 通常宝石（type 0..TYPES-1）のみ。frozenでもマッチに含める（消去はしないが氷を溶かす）
   var matched=new Set();
   for(var r=0;r<ROWS;r++){
-    var c=0;while(c<COLS){
-      var t=board[r][c]?.type;if(t==null||t<0||t>=100){c++;continue;}
-      var len=1;while(c+len<COLS&&board[r][c+len]?.type===t)len++;
+    var c=0;
+    while(c<COLS){
+      var g=board[r][c];
+      if(!g||g.special||g.type<0||g.type>=TYPES){c++;continue;}
+      var t=g.type, len=1;
+      while(c+len<COLS){
+        let g2=board[r][c+len];
+        if(!g2||g2.special||g2.type!==t)break;
+        len++;
+      }
       if(len>=3)for(var i=0;i<len;i++)matched.add(r+','+(c+i));
       c+=len;
     }
   }
   for(var c=0;c<COLS;c++){
-    var r=0;while(r<ROWS){
-      var t=board[r][c]?.type;if(t==null||t<0||t>=100){r++;continue;}
-      var len=1;while(r+len<ROWS&&board[r+len][c]?.type===t)len++;
+    var r=0;
+    while(r<ROWS){
+      var g=board[r][c];
+      if(!g||g.special||g.type<0||g.type>=TYPES){r++;continue;}
+      var t=g.type, len=1;
+      while(r+len<ROWS){
+        let g2=board[r+len][c];
+        if(!g2||g2.special||g2.type!==t)break;
+        len++;
+      }
       if(len>=3)for(var i=0;i<len;i++)matched.add((r+i)+','+c);
       r+=len;
     }
@@ -393,60 +399,262 @@ function findMatches(){
   return [...matched].map(s=>{var p=s.split(',');return{r:+p[0],c:+p[1]};});
 }
 
-async function processMatches(matches){
-  while(matches.length>0){
-    combo++;
-    var specials=findSpecials(matches);
-    let toRemove=[];
-    matches.forEach(m=>{
-      [[-1,0],[1,0],[0,-1],[0,1]].forEach(d=>{
-        let nr=m.r+d[0],nc=m.c+d[1];
-        if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&board[nr][nc]?.type===TYPE_CRATE)toRemove.push({r:nr,c:nc});
-      });
-      let g=board[m.r][m.c];
-      if(g.frozen){ board[m.r][m.c].frozen=false; updObjCnt('ice'); }
-      else { toRemove.push(m); if(g.type<100) updObjCnt(g.type); }
-    });
-    
-    await animRemove(toRemove);
-    toRemove.forEach(m=>{board[m.r][m.c]=null;});
-    specials.forEach(s=>board[s.r][s.c]={type:-1,x:s.c*cellSz,y:s.r*cellSz,ty:s.r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:s.special,frozen:false});
-    await drop();await fillEmpty();updUI();matches=findMatches();
+// 2×2同色正方形を独立検出（マッチが無くても検出）
+function findSquares(){
+  let squares=[];
+  for(let r=0;r<ROWS-1;r++){
+    for(let c=0;c<COLS-1;c++){
+      let g=board[r][c];if(!g||g.special||g.type<0||g.type>=TYPES||g.frozen)continue;
+      let t=g.type;
+      let g2=board[r][c+1],g3=board[r+1][c],g4=board[r+1][c+1];
+      if(g2&&!g2.special&&!g2.frozen&&g2.type===t&&
+         g3&&!g3.special&&!g3.frozen&&g3.type===t&&
+         g4&&!g4.special&&!g4.frozen&&g4.type===t){
+        squares.push({r,c,type:t});
+      }
+    }
   }
+  return squares;
 }
 
-// --- Core Actions ---
-async function trySwap(r1,c1,r2,c2){
-  animating=true;var g1=board[r1][c1],g2=board[r2][c2];
-  if(!g1||!g2||g1.type>=100||g2.type>=100||g1.frozen||g2.frozen){animating=false;return;}
-  
-  await animSwap(r1,c1,r2,c2);
-  swapData(r1,c1,r2,c2); fixPos();
+function findSpecials(matches, swapHint){
+  let specials=[];
+  let set=new Set(matches.map(m=>m.r+','+m.c));
 
-  let m=findMatches();
-  let hasSpecial = g1.special || g2.special;
+  // 行ラン・列ラン抽出
+  let byRow={},byCol={};
+  matches.forEach(m=>{
+    if(!byRow[m.r])byRow[m.r]=[];byRow[m.r].push(m.c);
+    if(!byCol[m.c])byCol[m.c]=[];byCol[m.c].push(m.r);
+  });
+  for(let k in byRow)byRow[k].sort((a,b)=>a-b);
+  for(let k in byCol)byCol[k].sort((a,b)=>a-b);
 
-  if(m.length || hasSpecial){
-    moves--; combo=0;
-    if(g1.special && g2.special){
-      let targets=combineSpecials(r1,c1,g1.special,r2,c2,g2.special);
-      await processSpecialRemove(targets);
-    } else if(hasSpecial){
-      let sr=g1.special?r1:r2, sc=g1.special?c1:c2, sp=g1.special||g2.special;
-      let targets=getSpecialTargets(sr,sc,sp); targets.push({r:sr,c:sc});
-      await processSpecialRemove(targets);
-    } else {
-      await processMatches(m);
+  let runs=[]; // {dir:'h'|'v', r,c,len, cells:[]}
+  for(let r in byRow){
+    let arr=byRow[r],i=0;
+    while(i<arr.length){
+      let j=i;while(j+1<arr.length&&arr[j+1]===arr[j]+1)j++;
+      let len=j-i+1;
+      if(len>=3){let cells=[];for(let k=i;k<=j;k++)cells.push({r:+r,c:arr[k]});runs.push({dir:'h',r:+r,c:arr[i],len,cells});}
+      i=j+1;
     }
-  } else {
-    await animSwap(r1,c1,r2,c2);
-    swapData(r1,c1,r2,c2); fixPos();
   }
-  animating=false; checkWin();
+  for(let c in byCol){
+    let arr=byCol[c],i=0;
+    while(i<arr.length){
+      let j=i;while(j+1<arr.length&&arr[j+1]===arr[j]+1)j++;
+      let len=j-i+1;
+      if(len>=3){let cells=[];for(let k=i;k<=j;k++)cells.push({r:arr[k],c:+c});runs.push({dir:'v',r:arr[i],c:+c,len,cells});}
+      i=j+1;
+    }
+  }
+
+  // 5連 → rainbow
+  for(let run of runs){
+    if(run.len>=5){
+      let center=run.cells[Math.floor(run.len/2)];
+      let pos=swapHint&&run.cells.find(x=>x.r===swapHint.r&&x.c===swapHint.c)?swapHint:center;
+      specials.push({r:pos.r,c:pos.c,special:'rainbow'});
+      run.cells.forEach(x=>set.delete(x.r+','+x.c));
+    }
+  }
+
+  // L/T字（行runと列runの交差）→ bomb
+  let hRuns=runs.filter(r=>r.dir==='h'&&r.len>=3&&r.len<5);
+  let vRuns=runs.filter(r=>r.dir==='v'&&r.len>=3&&r.len<5);
+  for(let h of hRuns){
+    for(let v of vRuns){
+      // 交差点
+      if(v.c>=h.c&&v.c<h.c+h.len&&h.r>=v.r&&h.r<v.r+v.len){
+        let key=h.r+','+v.c;
+        if(set.has(key)){
+          specials.push({r:h.r,c:v.c,special:'bomb'});
+          h.cells.forEach(x=>set.delete(x.r+','+x.c));
+          v.cells.forEach(x=>set.delete(x.r+','+x.c));
+        }
+      }
+    }
+  }
+
+  // 4連 → rocket
+  for(let run of runs){
+    if(run.len===4){
+      let stillIn=run.cells.filter(x=>set.has(x.r+','+x.c));
+      if(stillIn.length<4)continue;
+      let pos=swapHint&&run.cells.find(x=>x.r===swapHint.r&&x.c===swapHint.c)?swapHint:run.cells[1];
+      specials.push({r:pos.r,c:pos.c,special:run.dir==='h'?'rocket_v':'rocket_h'});
+      run.cells.forEach(x=>set.delete(x.r+','+x.c));
+    }
+  }
+
+  return {specials, remainingSet:set};
+}
+
+async function processMatches(matches){
+  let safety=0;
+  while(matches.length>0&&safety++<20){
+    combo++;
+
+    // 2×2正方形検出 → drone
+    let squares=findSquares();
+    let droneSpecials=[];
+    let squareCells=new Set();
+    let matchSet=new Set(matches.map(m=>m.r+','+m.c));
+    for(let sq of squares){
+      // 2×2の4セルのうち少なくとも1つがマッチに含まれる（=スワップ起因）か、独立発火扱い
+      let cells=[{r:sq.r,c:sq.c},{r:sq.r,c:sq.c+1},{r:sq.r+1,c:sq.c},{r:sq.r+1,c:sq.c+1}];
+      let inMatch=cells.some(x=>matchSet.has(x.r+','+x.c));
+      if(!inMatch)continue; // マッチ連動のみ（誤発火防止）
+      // すでにdrone確保済みのセル含む場合スキップ
+      if(cells.some(x=>squareCells.has(x.r+','+x.c)))continue;
+      cells.forEach(x=>squareCells.add(x.r+','+x.c));
+      droneSpecials.push({r:sq.r,c:sq.c,special:'drone'});
+    }
+
+    let {specials, remainingSet} = findSpecials(matches);
+    // squareCellsはマッチから除外（droneを生成）
+    squareCells.forEach(k=>remainingSet.delete(k));
+    specials.push(...droneSpecials);
+
+    // 重複特殊ポジションの整理
+    let specialPosMap=new Map();
+    for(let s of specials){
+      let k=s.r+','+s.c;
+      if(!specialPosMap.has(k))specialPosMap.set(k,s);
+    }
+    specials=[...specialPosMap.values()];
+    let specialPosSet=new Set(specials.map(s=>s.r+','+s.c));
+
+    // 削除対象
+    let toRemove=[];
+    let cratesHit=new Set();
+    matches.forEach(m=>{
+      let k=m.r+','+m.c;
+      // 隣接木箱
+      [[-1,0],[1,0],[0,-1],[0,1]].forEach(d=>{
+        let nr=m.r+d[0],nc=m.c+d[1];
+        if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&board[nr][nc]?.type===TYPE_CRATE){
+          cratesHit.add(nr+','+nc);
+        }
+      });
+      let g=board[m.r][m.c];if(!g)return;
+      if(g.frozen){
+        board[m.r][m.c].frozen=false;updObjCnt('ice');
+        spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,'#add8e6');
+        return; // frozenは消去しない（氷だけ溶かす）
+      }
+      if(specialPosSet.has(k))return; // 特殊化される位置は消さない
+      if(remainingSet.has(k)||squareCells.has(k)===false){
+        // remainingSetにある=普通に消える、または特殊にもsquareにも含まれず通常マッチ
+        if(remainingSet.has(k)){
+          toRemove.push(m);
+          if(g.type>=0&&g.type<TYPES)updObjCnt(g.type);
+        }
+      }
+    });
+    // squareCellsも特殊位置以外は消す
+    squareCells.forEach(k=>{
+      if(specialPosSet.has(k))return;
+      let [r,c]=k.split(',').map(Number);
+      let g=board[r][c];if(!g)return;
+      if(g.frozen){board[r][c].frozen=false;updObjCnt('ice');return;}
+      toRemove.push({r,c});
+      if(g.type>=0&&g.type<TYPES)updObjCnt(g.type);
+    });
+
+    // 隣接木箱
+    cratesHit.forEach(k=>{
+      let [r,c]=k.split(',').map(Number);
+      toRemove.push({r,c});
+      updObjCnt('crate');
+    });
+
+    toRemove=dedupTargets(toRemove);
+    score+=toRemove.length*10*combo;
+
+    await animRemove(toRemove);
+    for(let m of toRemove){
+      let g=board[m.r][m.c];
+      spawnParticles(m.c*cellSz+cellSz/2,m.r*cellSz+cellSz/2,g?.type===TYPE_CRATE?'#8B4513':(COLORS[g?.type]||'#ffd700'));
+      board[m.r][m.c]=null;
+    }
+    // 特殊配置
+    for(let s of specials){
+      board[s.r][s.c]={type:TYPE_SPECIAL,x:s.c*cellSz,y:s.r*cellSz,ty:s.r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:s.special,frozen:false};
+    }
+
+    await drop();await fillEmpty();updUI();
+    matches=findMatches();
+  }
+  combo=0;
+}
+
+// --- Swap ---
+async function trySwap(r1,c1,r2,c2){
+  if(animating)return;
+  animating=true;
+  let g1=board[r1][c1],g2=board[r2][c2];
+  if(!g1||!g2){animating=false;return;}
+  // 障害物・氷は動かせない（ただし特殊は動かせる）
+  let g1Movable=g1.special||(g1.type>=0&&g1.type<TYPES&&!g1.frozen);
+  let g2Movable=g2.special||(g2.type>=0&&g2.type<TYPES&&!g2.frozen);
+  if(!g1Movable||!g2Movable){animating=false;return;}
+
+  await animSwap(r1,c1,r2,c2);
+  swapData(r1,c1,r2,c2);fixPos();
+
+  let bothSpecial=board[r1][c1].special&&board[r2][c2].special;
+  let oneSpecial=(!!board[r1][c1].special)!==(!!board[r2][c2].special);
+  let m=findMatches();
+  let squares=findSquares();
+  // スワップ起因の正方形のみカウント
+  let swapTriggeredSquare=squares.some(sq=>{
+    let cells=[[sq.r,sq.c],[sq.r,sq.c+1],[sq.r+1,sq.c],[sq.r+1,sq.c+1]];
+    return cells.some(([r,c])=>(r===r1&&c===c1)||(r===r2&&c===c2));
+  });
+
+  if(bothSpecial){
+    moves--;combo=0;
+    let s1=board[r1][c1].special,s2=board[r2][c2].special;
+    let targets=combineSpecials(r1,c1,s1,r2,c2,s2);
+    // 自身の位置を消すために特殊フラグをクリア
+    board[r1][c1].special=null;board[r1][c1].type=TYPE_SPECIAL;
+    board[r2][c2].special=null;board[r2][c2].type=TYPE_SPECIAL;
+    targets.push({r:r1,c:c1},{r:r2,c:c2});
+    await processSpecialRemove(targets);
+  } else if(oneSpecial){
+    moves--;combo=0;
+    let sr,sc,sp,otherR,otherC;
+    if(board[r1][c1].special){sr=r1;sc=c1;sp=board[r1][c1].special;otherR=r2;otherC=c2;}
+    else{sr=r2;sc=c2;sp=board[r2][c2].special;otherR=r1;otherC=c1;}
+    let other=board[otherR][otherC];
+    let targets;
+    if(sp==='rainbow'&&other&&!other.special&&other.type>=0&&other.type<TYPES){
+      // rainbow + 通常宝石 = その色を全消去
+      targets=[];
+      for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]?.type===other.type&&!board[r][c].special)targets.push({r,c});
+      targets.push({r:sr,c:sc});
+    } else {
+      targets=getSpecialTargets(sr,sc,sp);
+      targets.push({r:sr,c:sc});
+    }
+    await processSpecialRemove(targets);
+  } else if(m.length||swapTriggeredSquare){
+    moves--;combo=0;
+    await processMatches(m.length?m:[{r:r1,c:c1},{r:r2,c:c2}]);
+  } else {
+    // マッチしない → 戻す
+    await animSwap(r1,c1,r2,c2);
+    swapData(r1,c1,r2,c2);fixPos();
+  }
+  animating=false;
+  updUI();
+  checkWin();
 }
 
 function combineSpecials(r1,c1,s1,r2,c2,s2){
-  var t=[], isR=s=>s==='rocket_h'||s==='rocket_v';
+  var t=[],isR=s=>s==='rocket_h'||s==='rocket_v';
   if(isR(s1)&&isR(s2)){for(let i=0;i<COLS;i++)t.push({r:r1,c:i});for(let i=0;i<ROWS;i++)t.push({r:i,c:c1});}
   else if((isR(s1)&&s2==='bomb')||(s1==='bomb'&&isR(s2))){
     let rr=s1==='bomb'?r1:r2,cc=s1==='bomb'?c1:c2;
@@ -454,21 +662,52 @@ function combineSpecials(r1,c1,s1,r2,c2,s2){
     for(let dc=-1;dc<=1;dc++)for(let i=0;i<ROWS;i++)if(cc+dc>=0&&cc+dc<COLS)t.push({r:i,c:cc+dc});
   }else if(s1==='bomb'&&s2==='bomb'){for(let dr=-3;dr<=3;dr++)for(let dc=-3;dc<=3;dc++){let nr=r1+dr,nc=c1+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)t.push({r:nr,c:nc});}}
   else if(s1==='rainbow'||s2==='rainbow'){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)t.push({r,c});}
-  t.push({r:r1,c:c1},{r:r2,c:c2});return t;
+  else if(s1==='drone'||s2==='drone'){
+    for(let k=0;k<5;k++){let target=findDroneTarget();if(target)t.push(target);}
+  }
+  return t;
 }
 
-// --- UI & Utils ---
+// --- Animation ---
 function swapData(r1,c1,r2,c2){var t=board[r1][c1];board[r1][c1]=board[r2][c2];board[r2][c2]=t;}
-function fixPos(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(g){g.x=c*cellSz;g.y=r*cellSz;g.ty=r*cellSz;g.ox=0;g.oy=0;}}}
+function fixPos(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){let g=board[r][c];if(g){g.x=c*cellSz;g.y=r*cellSz;g.ty=r*cellSz;g.ox=0;g.oy=0;g.scale=1;g.alpha=1;}}}
 async function animSwap(r1,c1,r2,c2){let g1=board[r1][c1],g2=board[r2][c2],dx=(c2-c1)*cellSz,dy=(r2-r1)*cellSz;return anim(ANIM_MS,t=>{let e=easeOut(t);if(g1){g1.ox=dx*e;g1.oy=dy*e;}if(g2){g2.ox=-dx*e;g2.oy=-dy*e;}});}
-async function animRemove(matches){return anim(ANIM_MS,t=>{matches.forEach(m=>{let g=board[m.r]?.[m.c];if(g){g.scale=1-t;g.alpha=1-t;}});});}
-async function animDrop(){let gs=[];for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]?.y!==board[r][c]?.ty)gs.push(board[r][c]);if(!gs.length)return;let st=gs.map(g=>g.y);return anim(ANIM_MS*1.5,t=>{let e=easeBounce(t);gs.forEach((g,i)=>g.y=st[i]+(g.ty-st[i])*e);});}
+async function animRemove(matches){if(!matches.length)return;return anim(ANIM_MS,t=>{matches.forEach(m=>{let g=board[m.r]?.[m.c];if(g){g.scale=Math.max(0,1-t);g.alpha=Math.max(0,1-t);}});});}
+async function animDrop(){let gs=[];for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]&&board[r][c].y!==board[r][c].ty)gs.push(board[r][c]);if(!gs.length)return;let st=gs.map(g=>g.y);return anim(ANIM_MS*1.5,t=>{let e=easeBounce(t);gs.forEach((g,i)=>g.y=st[i]+(g.ty-st[i])*e);});}
 async function drop(){
-  let moved=false;for(let c=0;c<COLS;c++){let empty=0;for(let r=ROWS-1;r>=0;r--){if(!board[r][c])empty++;else if(board[r][c].type>=100)empty=0;else if(empty>0){board[r+empty][c]=board[r][c];board[r][c]=null;board[r+empty][c].ty=(r+empty)*cellSz;moved=true;}}}
+  let moved=false;
+  for(let c=0;c<COLS;c++){
+    // 下から上に走査、空きカウントを上に積み、障害物（CRATE/STONE）に当たったらリセット
+    let r=ROWS-1, empty=0;
+    while(r>=0){
+      let g=board[r][c];
+      if(!g){empty++;r--;continue;}
+      if(g.type===TYPE_CRATE||g.type===TYPE_STONE){empty=0;r--;continue;}
+      if(empty>0){
+        board[r+empty][c]=g;
+        board[r][c]=null;
+        g.ty=(r+empty)*cellSz;
+        moved=true;
+      }
+      r--;
+    }
+  }
   if(moved)await animDrop();
 }
 async function fillEmpty(){
-  for(var c=0;c<COLS;c++){var emp=[];for(var r=0;r<ROWS;r++)if(!board[r][c])emp.push(r);for(var i=0;i<emp.length;i++){board[emp[i]][c]={type:rndType(emp[i],c),x:c*cellSz,y:-(emp.length-i)*cellSz,ty:emp[i]*cellSz,ox:0,oy:0,scale:1,alpha:1,special:null,frozen:false};}}
+  for(var c=0;c<COLS;c++){
+    // 上から下に空きを探し、上から降ってくる演出
+    let emptyRows=[];
+    for(let r=0;r<ROWS;r++){
+      // 障害物より上にある空きのみ充填（障害物より下は通常埋まらないが、シンプル化のためすべて埋める）
+      if(!board[r][c])emptyRows.push(r);
+      else if(board[r][c].type===TYPE_CRATE||board[r][c].type===TYPE_STONE)break; // 障害物より下は触らない
+    }
+    for(let i=0;i<emptyRows.length;i++){
+      let r=emptyRows[i];
+      board[r][c]={type:Math.floor(Math.random()*TYPES),x:c*cellSz,y:-(emptyRows.length-i)*cellSz,ty:r*cellSz,ox:0,oy:0,scale:1,alpha:1,special:null,frozen:false};
+    }
+  }
   await animDrop();
 }
 
@@ -483,7 +722,9 @@ function showLevelModal() {
   let aCr=0, aSt=0, aIc=0;
   for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
     let g=board[r][c];if(!g)continue;
-    if(g.type===TYPE_CRATE)aCr++; if(g.type===TYPE_STONE)aSt++; if(g.frozen)aIc++;
+    if(g.type===TYPE_CRATE)aCr++;
+    if(g.type===TYPE_STONE)aSt++;
+    if(g.frozen)aIc++;
   }
   document.getElementById('lvl-modal').classList.remove('hidden');
   document.getElementById('ml').textContent=level;
@@ -494,7 +735,8 @@ function showLevelModal() {
   let neededNormal=Math.max(1, 4-objectives.length);
   let usedTypes=new Set();
   for(let i=0;i<neededNormal;i++){
-    let t; do{t=Math.floor(Math.random()*TYPES)}while(usedTypes.has(t));
+    let t;let tries=0;
+    do{t=Math.floor(Math.random()*TYPES);tries++}while(usedTypes.has(t)&&tries<20);
     usedTypes.add(t);objectives.push({type:t,need:10+level*2,cur:0});
   }
   maxMoves=18+Math.floor(level*1.5);
@@ -502,15 +744,23 @@ function showLevelModal() {
   document.getElementById('mobj').innerHTML=`目標: ${txt}<br>手数: ${maxMoves}`;
 }
 
-async function startLevel(){document.getElementById('lvl-modal').classList.add('hidden');moves=maxMoves;score=0;combo=0;fixPos();updUI();}
+async function startLevel(){
+  document.getElementById('lvl-modal').classList.add('hidden');
+  moves=maxMoves;score=0;combo=0;
+  fixPos();updUI();
+  // 初期マッチがあれば自動消去
+  await new Promise(r=>setTimeout(r,100));
+  let m=findMatches();
+  if(m.length){animating=true;await processMatches(m);animating=false;}
+}
 function updUI(){document.getElementById('score').textContent=score;document.getElementById('moves').textContent=moves;document.getElementById('lvl').textContent=level;updObjectives();}
 function updObjectives(){document.getElementById('objectives').innerHTML=objectives.map(o=>{let isStr=typeof o.type==='string';let icon=isStr?OBJ_EMOJI[o.type]:EMOJI[o.type];let dot=isStr?'transparent':COLORS[o.type];return `<div class="obj${o.cur>=o.need?' done':''}"><span class="dot" style="background:${dot}; display:${isStr?'none':'inline-block'}"></span>${icon} ${o.cur}/${o.need}</div>`;}).join('');}
 function showMsg(txt){let el=document.getElementById('msg');el.textContent=txt;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1200);}
 async function checkWin(){
-  if(objectives.every(o=>o.cur>=o.need)){setTimeout(()=>{showMsg('🎉 CLEAR! 🎉');level++;setTimeout(()=>showLevelModal(),1200);},300);return;}
-  if(moves<=0){setTimeout(()=>{showMsg('💔 GAME OVER 💔');setTimeout(()=>showLevelModal(),1500);},300);return;}
+  if(objectives.length&&objectives.every(o=>o.cur>=o.need)){setTimeout(()=>{showMsg('🎉 CLEAR! 🎉');level++;setTimeout(()=>showLevelModal(),1200);},300);return;}
+  if(moves<=0){setTimeout(()=>{showMsg('💔 GAME OVER 💔');setTimeout(()=>{level=Math.max(1,level);showLevelModal();},1500);},300);return;}
 }
-function loop(){try{draw();updateParticles();}catch(e){}requestAnimationFrame(loop);}
+function loop(){try{draw();updateParticles();}catch(e){console.error(e);}requestAnimationFrame(loop);}
 
 init();
 </script>
